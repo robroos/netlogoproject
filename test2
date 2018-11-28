@@ -25,7 +25,6 @@ storage-points-own [capacity]
 
 pipelines-own [
                pipeline-distance
-               max-capacity
              ]
 
 to setup
