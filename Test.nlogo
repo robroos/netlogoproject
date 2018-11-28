@@ -4,7 +4,6 @@ globals [
          co2-storage-price
          co2-emission-price
          current-capture-technology-price
-         current-capture-technology-capacity
         ]
 
 breed [industries industry]
@@ -39,6 +38,7 @@ to setup
     set color white
     set size 0.5
     setxy random-xcor random-ycor
+    ferofjeriufjeorjfoierjfoierjfj
   ]
   set-default-shape storage-points "chess rook"
   createe-storagepoints 2 5
@@ -187,6 +187,23 @@ initial-capture-technology-capacity
 1
 0
 Number
+
+BUTTON
+145
+476
+294
+509
+NIL
+ufgrgferfeufgerfyerg
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
