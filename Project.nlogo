@@ -7,64 +7,115 @@ globals [
          current-capture-technology-capacity
         ]
 
+breed [port-of-rotterdam port-of-rotterdamm]
 breed [industries industry]
 breed [storage-points storage-point]
-directed-link-breed [pipelines pipeline]
+breed [pipeline-builders pipeline-builder]
+undirected-link-breed [pipelines pipeline]
+
+port-of-rotterdam-own [pipeline-project]
 
 industries-own [
                 payback-period
                 storage-costs
                 emission-costs
+                energy-source     ;; Electricity or oil
                 energy-costs      ;; Electricity or oil
                 capture-technology-capacity
                 capture-technology-price
                 distance-storage-point
                ]
 
-storage-points-own [capacity]
+storage-points-own [
+                     capacity
+                     in-use
+                     under-construction
+                   ]
+
+pipeline-builders-own[
+                       start
+                       target
+                     ]
 
 pipelines-own [
                pipeline-distance
                max-capacity
-             ]
+              ]
 
 to setup
   clear-all
-  ask patches [set pcolor green]
-  ask patches with [pycor <= max-pycor and pycor >= 5]
-    [ set pcolor blue ]
+  ask patches [set pcolor blue]
+  ask patches with [pxcor <= max-pxcor and pxcor >= -2]
+    [ set pcolor green ]
   set-default-shape industries "factory"
   create-industries initial-number-factories
   [
     set color white
     set size 0.5
-    setxy random-xcor random-ycor
+    setxy -2 + random-float 6  -3 + random-float 6
+  ]
+  set-default-shape port-of-rotterdam "building institution"
+  create-port-of-rotterdam 1
+  [
+    set color red
+    set size 2
+    setxy -2 0
+    set pipeline-project false
   ]
   set-default-shape storage-points "chess rook"
-  createe-storagepoints 2 5
-  createe-storagepoints 5 8
-  createe-storagepoints 3 7
   set current-capture-technology-price initial-capture-technology-price
   set current-capture-technology-capacity initial-capture-technology-capacity
   reset-ticks
 end
 
-to createe-storagepoints [ x y ]
-  ask patches with [ pycor = y and pxcor = x ]
-    [sprout-storage-points 1]
+to createe-storagepoints
+  if ticks = 5 [
+         ask patches with [ pycor = 18 and pxcor = 18 ]
+            [sprout-storage-points 1 [ set in-use false
+                                       set under-construction false]]]
+  if ticks = 40 [
+         ask patches with [ pycor = 15 and pxcor = 18 ]
+            [sprout-storage-points 1 [ set in-use false
+                                       set under-construction false]]]
+  if ticks = 60 [
+         ask patches with [ pycor = -5 and pxcor = -10 ]
+            [sprout-storage-points 1 [ set in-use false
+                                       set under-construction false]]]
 end
 
 to go
   if ticks > 500
     [ stop ]
   capture-technology-development
-  if ticks = 10
-    [ build-pipelines ]
+  build-pipelines
+  createe-storagepoints
   tick
 end
 
 to build-pipelines
-  ask industries [ create-pipeline-to min-one-of storage-points [ distance myself ] ]
+  ask storage-points with [ in-use = false and under-construction = false ]
+   [
+    ifelse count storage-points > 1
+     [ ifelse distance min-one-of port-of-rotterdam [ distance myself ] < distance min-one-of other storage-points [ distance myself ]
+         [ set under-construction true
+           ask port-of-rotterdam [ hatch-pipeline-builders 1 [ set start min-one-of port-of-rotterdam [ distance myself ]
+                                                               set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
+         [ set under-construction true
+           ask min-one-of other storage-points [ distance myself ] [ hatch-pipeline-builders 1 [ set start min-one-of storage-points [ distance myself ]
+                                                               set target min-one-of other storage-points with [ under-construction = true ] [ distance myself ]]]]]
+     [ set under-construction true
+           ask port-of-rotterdam [ hatch-pipeline-builders 1 [ set start min-one-of port-of-rotterdam [ distance myself ]
+                                                               set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
+]
+ask pipeline-builders [
+                          face target
+                          ask storage-points in-radius 1 [ if in-use = false [ create-pipeline-with [ start ] of myself
+                                                                               set in-use true
+                                                                               set under-construction false
+                                                                               ask pipeline-builders in-radius 1 [ die ] ]]
+                          fd 1
+                          create-pipeline-with start
+                        ]
 end
 
 to capture-technology-development
@@ -78,11 +129,11 @@ end
 GRAPHICS-WINDOW
 302
 10
-739
-448
+720
+429
 -1
 -1
-13.0
+10.0
 1
 10
 1
@@ -92,10 +143,10 @@ GRAPHICS-WINDOW
 0
 0
 1
--16
-16
--16
-16
+-20
+20
+-20
+20
 0
 0
 1
@@ -128,7 +179,7 @@ initial-number-factories
 initial-number-factories
 0
 100
-30.0
+19.0
 1
 1
 NIL
@@ -259,6 +310,38 @@ Circle -7500403 true true 110 75 80
 Line -7500403 true 150 100 80 30
 Line -7500403 true 150 100 220 30
 
+building institution
+false
+0
+Rectangle -7500403 true true 0 60 300 270
+Rectangle -16777216 true false 130 196 168 256
+Rectangle -16777216 false false 0 255 300 270
+Polygon -7500403 true true 0 60 150 15 300 60
+Polygon -16777216 false false 0 60 150 15 300 60
+Circle -1 true false 135 26 30
+Circle -16777216 false false 135 25 30
+Rectangle -16777216 false false 0 60 300 75
+Rectangle -16777216 false false 218 75 255 90
+Rectangle -16777216 false false 218 240 255 255
+Rectangle -16777216 false false 224 90 249 240
+Rectangle -16777216 false false 45 75 82 90
+Rectangle -16777216 false false 45 240 82 255
+Rectangle -16777216 false false 51 90 76 240
+Rectangle -16777216 false false 90 240 127 255
+Rectangle -16777216 false false 90 75 127 90
+Rectangle -16777216 false false 96 90 121 240
+Rectangle -16777216 false false 179 90 204 240
+Rectangle -16777216 false false 173 75 210 90
+Rectangle -16777216 false false 173 240 210 255
+Rectangle -16777216 false false 269 90 294 240
+Rectangle -16777216 false false 263 75 300 90
+Rectangle -16777216 false false 263 240 300 255
+Rectangle -16777216 false false 0 240 37 255
+Rectangle -16777216 false false 6 90 31 240
+Rectangle -16777216 false false 0 75 37 90
+Line -16777216 false 112 260 184 260
+Line -16777216 false 105 265 196 265
+
 butterfly
 true
 0
@@ -305,6 +388,23 @@ false
 0
 Circle -7500403 true true 0 0 300
 Circle -16777216 true false 30 30 240
+
+container
+false
+0
+Rectangle -7500403 false false 0 75 300 225
+Rectangle -7500403 true true 0 75 300 225
+Line -16777216 false 0 210 300 210
+Line -16777216 false 0 90 300 90
+Line -16777216 false 150 90 150 210
+Line -16777216 false 120 90 120 210
+Line -16777216 false 90 90 90 210
+Line -16777216 false 240 90 240 210
+Line -16777216 false 270 90 270 210
+Line -16777216 false 30 90 30 210
+Line -16777216 false 60 90 60 210
+Line -16777216 false 210 90 210 210
+Line -16777216 false 180 90 180 210
 
 cow
 false
