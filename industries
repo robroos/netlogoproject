@@ -6,7 +6,7 @@ globals [
          current-capture-technology-price
          current-capture-technology-capacity
         ]
-
+fherihfiruehfiuerhfiehrfhr
 breed [industries industry]
 breed [storage-points storage-point]
 directed-link-breed [pipelines pipeline]
