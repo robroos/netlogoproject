@@ -7,5 +7,5 @@ Help, ik heb een nieuwe versie van het Project bestand!
 4. Je kiest voor "New pull request"
 5. Alle wijzigingen in het bestand worden nu met groen en rood weergegeven
 6. Je kiest voor "Create pull request"
-7. Vervolgens kan iemand (of jijzelf) de pull request goed wil keuren
+7. Vervolgens kan iemand (of jijzelf) de pull request goed keuren
 8. Als dit gedaan is, worden alle bestanden in de twee branches samengevoegd
