@@ -5,6 +5,8 @@ globals [
          co2-emission-price
          current-capture-technology-price
          current-capture-technology-capacity
+         total-co2-emitted
+         total-co2-storage-industry-costs
         ]
 
 breed [industries industry]
@@ -13,9 +15,9 @@ directed-link-breed [pipelines pipeline]
 
 industries-own [
                 payback-period
-                storage-costs
-                emission-costs
-                energy-costs      ;; Electricity or  ;; probably not used
+                ;storage-costs
+                ;emission-costs
+                ;energy-costs      ;; Electricity or  ;; probably not used
                 capture-technology-capacity
                 capture-technology-price
                 distance-storage-point
@@ -46,10 +48,10 @@ to setup
     set size 0.5
     setxy random-xcor random-ycor
     set payback-period (1 + random 20)
-    set co2-production 10
-    set electricity-consumption 3
-    set oil-consumption 3
-    set CCS-joined False
+    set co2-production 10 ;
+    set electricity-consumption 3 ;
+    set oil-consumption 3 ;
+    set CCS-joined False ;
 
   ]
   set-default-shape storage-points "chess rook"
@@ -64,6 +66,8 @@ to setup
   set oil-price initial-oil-price
   set co2-emission-price initial-co2-emission-price
   set co2-storage-price initial-co2-storage-price
+
+  set total-co2-emitted 0
 
   reset-ticks
 end
@@ -103,7 +107,10 @@ to join-CCS
 
   if ( current-capture-technology-price +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )[
     set CCS-joined True
-    set color red]
+    set color red
+    set capture-technology-capacity current-capture-technology-capacity
+    set total-co2-storage-industry-costs (total-co2-storage-industry-costs + current-capture-technology-price) ;update industry co2 costs with CAPEX
+  ]
 end
 
 to update-global-values
@@ -112,6 +119,13 @@ to update-global-values
     set oil-price oil-price * 1.05
     set co2-emission-price co2-emission-price * 1.05
     set co2-storage-price co2-storage-price * 0.95
+  ]
+end
+
+to update-KPI
+  if ticks != 0 and remainder ticks 12 = 0 [
+    set total-co2-emitted (total-co2-emitted + co2-production)
+    set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
   ]
 end
 @#$#@#$#@
