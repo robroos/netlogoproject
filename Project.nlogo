@@ -7,13 +7,13 @@ globals [
          current-capture-technology-capacity
         ]
 
-breed [port-of-rotterdam port-of-rotterdamm]
+breed [ports-of-rotterdam port-of-rotterdam]
 breed [industries industry]
 breed [storage-points storage-point]
 breed [pipeline-builders pipeline-builder]
 undirected-link-breed [pipelines pipeline]
 
-port-of-rotterdam-own [pipeline-project]
+ports-of-rotterdam-own [pipeline-project]
 
 industries-own [
                 payback-period
@@ -47,20 +47,20 @@ to setup
   ask patches [set pcolor blue]
   ask patches with [pxcor <= max-pxcor and pxcor >= -2]
     [ set pcolor green ]
+  set-default-shape ports-of-rotterdam "building institution"
+  create-ports-of-rotterdam 1
+  [
+    set color red
+    set size 2
+    setxy -2 0
+    set pipeline-project false
+  ]
   set-default-shape industries "factory"
   create-industries initial-number-factories
   [
     set color white
     set size 0.5
     setxy -2 + random-float 6  -3 + random-float 6
-  ]
-  set-default-shape port-of-rotterdam "building institution"
-  create-port-of-rotterdam 1
-  [
-    set color red
-    set size 2
-    setxy -2 0
-    set pipeline-project false
   ]
   set-default-shape storage-points "chess rook"
   set current-capture-technology-price initial-capture-technology-price
@@ -94,24 +94,27 @@ to build-pipelines
   ask storage-points with [ in-use = false and under-construction = false ]
    [
     ifelse count storage-points > 1
-     [ ifelse distance min-one-of port-of-rotterdam [ distance myself ] < distance min-one-of other storage-points [ distance myself ]
+     [ ifelse distance port-of-rotterdam 0 < distance min-one-of other storage-points with [ in-use = true ] [ distance myself ]
          [ set under-construction true
-           ask port-of-rotterdam [ hatch-pipeline-builders 1 [ set start min-one-of port-of-rotterdam [ distance myself ]
-                                                               set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
+           ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
+                                                                 set start port-of-rotterdam 0
+                                                                 set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
          [ set under-construction true
-           ask min-one-of other storage-points [ distance myself ] [ hatch-pipeline-builders 1 [ set start min-one-of storage-points [ distance myself ]
-                                                               set target min-one-of other storage-points with [ under-construction = true ] [ distance myself ]]]]]
+           ask min-one-of other storage-points [ distance myself ] [ hatch-pipeline-builders 1 [ hide-turtle
+                                                                                                 set start min-one-of storage-points [ distance myself ]
+                                                                                                 set target min-one-of other storage-points with [ under-construction = true ] [ distance myself ]]]]]
      [ set under-construction true
-           ask port-of-rotterdam [ hatch-pipeline-builders 1 [ set start min-one-of port-of-rotterdam [ distance myself ]
-                                                               set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
-]
-ask pipeline-builders [
+       ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
+                                                             set start port-of-rotterdam 0
+                                                             set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
+   ]
+  ask pipeline-builders [
                           face target
-                          ask storage-points in-radius 1 [ if in-use = false [ create-pipeline-with [ start ] of myself
+                          ask storage-points in-radius 5 [ if in-use = false [ create-pipeline-with [ start ] of myself
                                                                                set in-use true
                                                                                set under-construction false
-                                                                               ask pipeline-builders in-radius 1 [ die ] ]]
-                          fd 1
+                                                                               ask pipeline-builders in-radius 5 [ die ] ]]
+                          fd 5
                           create-pipeline-with start
                         ]
 end
