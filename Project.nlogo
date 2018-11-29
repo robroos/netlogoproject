@@ -84,8 +84,6 @@ to createe-storagepoints
 end
 
 to go
-  if ticks > 500
-    [ stop ]
   capture-technology-development
   build-pipelines
   createe-storagepoints
@@ -147,8 +145,8 @@ GRAPHICS-WINDOW
 20
 -20
 20
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -207,7 +205,7 @@ BUTTON
 58
 NIL
 go
-NIL
+T
 1
 T
 OBSERVER
