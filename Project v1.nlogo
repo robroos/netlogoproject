@@ -6,6 +6,7 @@ globals [
          current-capture-technology-price
          current-capture-technology-capacity
          total-co2-emitted
+         total-co2-stored
          total-co2-storage-industry-costs
         ]
 
@@ -15,7 +16,7 @@ breed [storage-points storage-point]
 breed [pipeline-builders pipeline-builder]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [pipeline-project]
+ports-of-rotterdam-own [money]
 
 industries-own [
                 payback-period
@@ -35,6 +36,7 @@ industries-own [
 
 storage-points-own [
                      capacity
+                     co2-stored
                      in-use
                      under-construction
                    ]
@@ -45,6 +47,7 @@ pipeline-builders-own[
                      ]
 
 pipelines-own [
+               extensible
                pipeline-distance
                max-capacity
               ]
@@ -61,7 +64,6 @@ to setup
     set color red
     set size 2
     setxy -2 0
-    set pipeline-project false
   ]
 
   set-default-shape industries "factory"
@@ -71,7 +73,7 @@ to setup
     set size 0.5
     setxy -2 + random-float 6  -3 + random-float 6
     set payback-period (1 + random 20)
-    set co2-production 10 ;
+    set co2-production (1 + random 10) ;
     set electricity-consumption 3 ;
     set oil-consumption 3 ;
     set CCS-joined False ;
@@ -94,15 +96,18 @@ end
 to createe-storagepoints
   if ticks = 5 [
          ask patches with [ pycor = 18 and pxcor = 18 ]
-            [sprout-storage-points 1 [ set in-use false
+            [sprout-storage-points 1 [ set capacity 400
+                                       set in-use false
                                        set under-construction false]]]
   if ticks = 40 [
          ask patches with [ pycor = 15 and pxcor = 18 ]
-            [sprout-storage-points 1 [ set in-use false
+            [sprout-storage-points 1 [ set capacity 400
+                                       set in-use false
                                        set under-construction false]]]
   if ticks = 60 [
          ask patches with [ pycor = -5 and pxcor = -10 ]
-            [sprout-storage-points 1 [ set in-use false
+            [sprout-storage-points 1 [ set capacity 400
+                                       set in-use false
                                        set under-construction false]]]
 end
 
@@ -110,12 +115,23 @@ to go
   capture-technology-development
   update-global-values
   ;update-KPI
-  build-pipelines
   createe-storagepoints
-  if ticks != 0 and remainder ticks 12 = 0 [
-    ask industries with [CCS-joined = False] [ join-CCS ] ]
+  port-of-rotterdam-actions
   tick
 end
+
+to port-of-rotterdam-actions
+  ask port-of-rotterdam 0
+  [
+   if any? pipelines with [ extensible = true ] or any? storage-points with [ in-use = false ]
+      [ ask industries with [CCS-joined = false] [ join-CCS ] ]
+   if any? industries with [CCS-joined = true] and money >  ; and if there is enough money ( government subsidy + income from storage )
+      [ build-pipelines ]
+  ]
+end
+
+
+
 
 to build-pipelines
   ask storage-points with [ in-use = false and under-construction = false ]
@@ -137,7 +153,7 @@ to build-pipelines
    ]
   ask pipeline-builders [
                           face target
-                          ask storage-points in-radius 5 [ if in-use = false [ create-pipeline-with [ start ] of myself
+                          ask storage-points in-radius 5 [ if in-use = false [ create-pipeline-with [ start ] of myself [ set extensible extensible? ]
                                                                                set in-use true
                                                                                set under-construction false
                                                                                ask pipeline-builders in-radius 5 [ die ] ]]
@@ -158,7 +174,8 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
   set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
   set OPEX-with-CCS ( electricity-price * electricity-consumption + oil-price * oil-consumption + (min(list current-capture-technology-capacity co2-production) * co2-storage-price)  + (max(list (co2-production - current-capture-technology-capacity) 0) * co2-emission-price) )
 
-  if ( current-capture-technology-price +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )[
+  if ( current-capture-technology-price +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
+  [
     set CCS-joined True
     set color red
     set capture-technology-capacity current-capture-technology-capacity
@@ -177,9 +194,9 @@ end
 
 ;to update-KPI
 ;  if ticks != 0 and remainder ticks 12 = 0 [
-;    set total-co2-emitted (total-co2-emitted + co2-production)
-;    set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
-;  ]
+ ;   set total-co2-emitted (total-co2-emitted + co2-production)
+ ;  set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
+ ;]
 ;end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -235,7 +252,7 @@ initial-number-factories
 initial-number-factories
 0
 100
-19.0
+5.0
 1
 1
 NIL
@@ -279,7 +296,7 @@ INPUTBOX
 223
 255
 initial-capture-technology-price
-10.0
+100.0
 1
 0
 Number
@@ -290,7 +307,7 @@ INPUTBOX
 240
 337
 initial-capture-technology-capacity
-100.0
+10.0
 1
 0
 Number
@@ -323,7 +340,7 @@ INPUTBOX
 401
 515
 initial-co2-emission-price
-100.0
+7.0
 1
 0
 Number
@@ -334,10 +351,21 @@ INPUTBOX
 593
 530
 initial-co2-storage-price
-5.0
+7.0
 1
 0
 Number
+
+SWITCH
+754
+126
+936
+159
+extensible-pipelines
+extensible-pipelines
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
