@@ -38,6 +38,7 @@ industries-own [
                 OPEX-with-CCS
                 CCS-joined
                 co2-storage
+                co2-emission
                ]
 
 storage-points-own [
@@ -150,6 +151,7 @@ to go
   createe-storagepoints
   port-of-rotterdam-actions
   store-co2
+  emit-co2
   tick
 end
 
@@ -235,7 +237,8 @@ to install-CCS
   if CCS-joined = true and capture-technology-capacity = 0 [set capture-technology-capacity current-capture-technology-capacity
                                                             set color yellow
                                                             create-pipeline-with port-of-rotterdam 0
-                                                            set co2-storage min list co2-production capture-technology-capacity]
+                                                            set co2-storage min list co2-production capture-technology-capacity
+                                                            set co2-emission max list (co2-production - current-capture-technology-capacity) 0]
   ]
 end
 
@@ -254,6 +257,7 @@ to store-co2
       if capacity - co2-stored < sum [ co2-storage ] of industries [ set leftover sum [ co2-storage ] of industries - (capacity - co2-stored) ]
       set co2-stored-current-year min list (capacity - co2-stored) sum [ co2-storage ] of industries
       set co2-stored co2-stored + co2-stored-current-year
+      set total-co2-stored total-co2-stored + co2-stored-current-year
       ask port-of-rotterdam 0 [set money money + co2-storage-price * co2-stored-current-year
                                set co2-storage-income co2-storage-income + co2-storage-price * co2-stored-current-year]
       if co2-stored = capacity
@@ -269,7 +273,9 @@ to store-co2
     ]
 end
 
-
+to emit-co2
+  ask industries[ set total-co2-emitted total-co2-emitted + co2-emission]
+end
 
 
 ;to update-KPI
