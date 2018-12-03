@@ -63,14 +63,14 @@ pipelines-own [
 
 to setup
   clear-all
-  ask patches [set pcolor blue]
+  ask patches [set pcolor 96]
   ask patches with [pxcor <= max-pxcor and pxcor >= -2]
-    [ set pcolor green ]
+    [ set pcolor 68 ]
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
   [
-    set color red
+    set color white
     set size 2
     setxy -2 0
     set money 1000
@@ -84,7 +84,7 @@ to setup
 
   [
     set color red
-    set size 1.5
+    set size 2
     setxy -2 + random-float 6  -3 + random-float 6
     set payback-period (1 + random 20)
     set co2-production (1 + random 10)
@@ -117,27 +117,30 @@ to createe-storagepoints
   if ticks = 5 [
          ask patches with [ pycor = 18 and pxcor = 18 ]
             [sprout-storage-points 1 [ set capacity 400
+                                       set size 2
                                        set in-use false
                                        set under-construction false
                                        set full false
                                        set connected false
-                                       set color black ]]]
+                                       set color orange ]]]
   if ticks = 30 [
          ask patches with [ pycor = 12 and pxcor = 18 ]
             [sprout-storage-points 1 [ set capacity 400
+                                       set size 2
                                        set in-use false
                                        set under-construction false
                                        set full false
                                        set connected false
-                                       set color black ]]]
+                                       set color orange ]]]
   if ticks = 200 [
          ask patches with [ pycor = -5 and pxcor = -10 ]
             [sprout-storage-points 1 [ set capacity 400
+                                       set size 2
                                        set in-use false
                                        set under-construction false
                                        set full false
                                        set connected false
-                                       set color black ]]]
+                                       set color orange ]]]
 
 end
 
@@ -201,7 +204,7 @@ to build-pipelines
                                                                                       set under-construction false
                                                                                       set connected true
                                                                                       set color orange
-                                                                                      if count storage-points with [ connected = true ] = 1 or all? other storage-points [full = true] [ set in-use true set color yellow ]
+                                                                                      if count storage-points with [ connected = true ] = 1 or all? other storage-points [full = true] [ set in-use true set color green ]
                                                                                       ask pipeline-builders in-radius 2 [ die ] ]]
                               fd 2
                               create-pipeline-with start
@@ -233,7 +236,7 @@ end
 to install-CCS
   ask industries[
   if CCS-joined = true and capture-technology-capacity = 0 [set capture-technology-capacity current-capture-technology-capacity
-                                                            set color yellow
+                                                            set color green
                                                             create-pipeline-with port-of-rotterdam 0
                                                             set co2-storage min list co2-production capture-technology-capacity]
   ]
@@ -263,7 +266,7 @@ to store-co2
           set color red
           if any? storage-points with [in-use = false and full = false and connected = true ]
             [ask one-of other storage-points with [in-use = false and full = false and connected = true ] [ set in-use true
-                                                                                                            set color yellow
+                                                                                                            set color green
                                                                                                             set co2-stored [ leftover ] of myself ]]
         ]
     ]
