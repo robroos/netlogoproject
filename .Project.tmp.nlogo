@@ -244,7 +244,7 @@ to store-co2
       [set co2-stored-current-year min list (capacity - co2-stored) sum [ co2-storage ] of industries
       set co2-stored co2-stored + co2-stored-current-year
       ask port-of-rotterdam 0 [set money money + co2-storage-price * co2-stored-current-year
-                               set co2-storage-income co2-storage-income + co2-storage-price * co2-stored-current-year]]
+                               set co2-storage-income  co2-storage-price * co2-stored-current-year]]
       [
        set in-use false
        set full true
