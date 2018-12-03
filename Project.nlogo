@@ -9,7 +9,10 @@ globals [
          total-co2-emitted
          total-co2-stored
          total-co2-storage-industry-costs
-
+         co2-stored-current-year
+         yearly-government-subsidy
+         fraction-subsidy-to-pora
+         subsidy-per-industry-without-ccs
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -18,7 +21,10 @@ breed [storage-points storage-point]
 breed [pipeline-builders pipeline-builder]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [money]
+ports-of-rotterdam-own [money
+                        co2-storage-income
+                        subsidy-income
+                        pipeline-expenditure]
 
 industries-own [
                 payback-period
@@ -41,6 +47,7 @@ storage-points-own [
                      under-construction
                      full
                      connected
+                     leftover
                    ]
 
 pipeline-builders-own[
@@ -66,7 +73,10 @@ to setup
     set color red
     set size 2
     setxy -2 0
-    set money 100000000
+    set money 1000
+    set co2-storage-income 0
+    set subsidy-income 0
+    set pipeline-expenditure 0
   ]
 
   set-default-shape industries "factory"
@@ -96,7 +106,10 @@ to setup
   set co2-storage-price initial-co2-storage-price
 
   set total-co2-emitted 0
+  set co2-stored-current-year 0
 
+  set yearly-government-subsidy 100
+  set fraction-subsidy-to-pora 0.7
   reset-ticks
 end
 
@@ -107,21 +120,24 @@ to createe-storagepoints
                                        set in-use false
                                        set under-construction false
                                        set full false
-                                       set connected false ]]]
+                                       set connected false
+                                       set color black ]]]
   if ticks = 30 [
          ask patches with [ pycor = 12 and pxcor = 18 ]
             [sprout-storage-points 1 [ set capacity 400
                                        set in-use false
                                        set under-construction false
                                        set full false
-                                       set connected false ]]]
+                                       set connected false
+                                       set color black ]]]
   if ticks = 200 [
          ask patches with [ pycor = -5 and pxcor = -10 ]
             [sprout-storage-points 1 [ set capacity 400
                                        set in-use false
                                        set under-construction false
                                        set full false
-                                       set connected false ]]]
+                                       set connected false
+                                       set color black ]]]
 
 end
 
@@ -129,6 +145,7 @@ to go
   install-CCS
   capture-technology-development
   update-global-values
+  pay-out-subsidy
   ;update-KPI
   createe-storagepoints
   port-of-rotterdam-actions
@@ -145,15 +162,22 @@ to port-of-rotterdam-actions
        [ build-pipelines ]
 end
 
+to pay-out-subsidy
+  ask port-of-rotterdam 0 [set money money + yearly-government-subsidy * fraction-subsidy-to-pora
+                           set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
+  ifelse count industries with [CCS-joined = true] = count industries
+    [set subsidy-per-industry-without-ccs 0]
+    [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries with [CCS-joined = false]]
 
-
+end
 
 to build-pipelines
-
-  ask storage-points with [ in-use = false and under-construction = false and full = false ]
+  if not any? storage-points with [ under-construction = true]
+  [
+  ask storage-points with [ in-use = false and under-construction = false and full = false and connected = false ]
    [
-    ifelse count storage-points > 1
-     [ ifelse distance port-of-rotterdam 0 < distance min-one-of other storage-points [ distance myself ]
+      ifelse count storage-points > 1
+      [ ifelse distance port-of-rotterdam 0 < distance min-one-of other storage-points with [ connected = true ] [ distance myself ]
          [ set under-construction true
            ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
                                                                  set start port-of-rotterdam 0
@@ -167,14 +191,18 @@ to build-pipelines
                                                              set start port-of-rotterdam 0
                                                              set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
    ]
+  ]
   ask pipeline-builders [ if [ money ] of port-of-rotterdam 0 > distance target * pipeline-price
                             [
                               face target
                               ask storage-points in-radius 2 [ if connected = false [ create-pipeline-with [ start ] of myself [ set extensible extensible-pipelines ]
-                                                                                   if count storage-points = 1 [ set in-use true ]
-                                                                                   set under-construction false
-                                                                                   set connected true
-                                                                                   ask pipeline-builders in-radius 2 [ die ] ]]
+                                                                                      ask port-of-rotterdam 0 [ set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * pipeline-price
+                                                                                                                set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * pipeline-price]
+                                                                                      set under-construction false
+                                                                                      set connected true
+                                                                                      set color orange
+                                                                                      if count storage-points with [ connected = true ] = 1 or all? other storage-points [full = true] [ set in-use true set color yellow ]
+                                                                                      ask pipeline-builders in-radius 2 [ die ] ]]
                               fd 2
                               create-pipeline-with start
                             ]
@@ -189,11 +217,12 @@ to capture-technology-development
     ]
 end
 
+
 to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as a result of ineffeciency
   set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
   set OPEX-with-CCS ( electricity-price * electricity-consumption + oil-price * oil-consumption + (min(list current-capture-technology-capacity co2-production) * co2-storage-price)  + (max(list (co2-production - current-capture-technology-capacity) 0) * co2-emission-price) )
 
-  if ( current-capture-technology-price +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
+  if ( current-capture-technology-price - subsidy-per-industry-without-ccs +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
   [
     set CCS-joined true
     set color orange
@@ -222,13 +251,21 @@ end
 to store-co2
   ask storage-points with [in-use = true]
     [
-      ifelse co2-stored < capacity
-      [set co2-stored co2-stored + min list (capacity - co2-stored) sum [ co2-storage ] of industries ]
-      [
-       set in-use false
-       set full true
-        ask one-of other storage-points with [in-use = false and full = false and connected = true ] [ set in-use true ]
-      ]
+      if capacity - co2-stored < sum [ co2-storage ] of industries [ set leftover sum [ co2-storage ] of industries - (capacity - co2-stored) ]
+      set co2-stored-current-year min list (capacity - co2-stored) sum [ co2-storage ] of industries
+      set co2-stored co2-stored + co2-stored-current-year
+      ask port-of-rotterdam 0 [set money money + co2-storage-price * co2-stored-current-year
+                               set co2-storage-income co2-storage-income + co2-storage-price * co2-stored-current-year]
+      if co2-stored = capacity
+        [
+          set in-use false
+          set full true
+          set color red
+          if any? storage-points with [in-use = false and full = false and connected = true ]
+            [ask one-of other storage-points with [in-use = false and full = false and connected = true ] [ set in-use true
+                                                                                                            set color yellow
+                                                                                                            set co2-stored [ leftover ] of myself ]]
+        ]
     ]
 end
 
