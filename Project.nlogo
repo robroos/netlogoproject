@@ -9,10 +9,7 @@ globals [
          total-co2-emitted
          total-co2-stored
          total-co2-storage-industry-costs
-         co2-stored-current-year
-         yearly-government-subsidy
-         fraction-subsidy-to-pora
-         subsidy-per-industry-without-ccs
+
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -21,9 +18,7 @@ breed [storage-points storage-point]
 breed [pipeline-builders pipeline-builder]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [money
-                        co2-storage-income
-                        subsidy-income]
+ports-of-rotterdam-own [money]
 
 industries-own [
                 payback-period
@@ -101,10 +96,6 @@ to setup
   set co2-storage-price initial-co2-storage-price
 
   set total-co2-emitted 0
-  set co2-stored-current-year 0
-
-  set yearly-government-subsidy 100000
-  set fraction-subsidy-to-pora 0.7
 
   reset-ticks
 end
@@ -138,7 +129,6 @@ to go
   install-CCS
   capture-technology-development
   update-global-values
-  pay-out-subsidy
   ;update-KPI
   createe-storagepoints
   port-of-rotterdam-actions
@@ -155,14 +145,6 @@ to port-of-rotterdam-actions
        [ build-pipelines ]
 end
 
-to pay-out-subsidy
-  ask port-of-rotterdam 0 [set money money + yearly-government-subsidy * fraction-subsidy-to-pora
-                           set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
-  ifelse count industries with [CCS-joined = true] = count industries
-    [set subsidy-per-industry-without-ccs 0]
-    [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries with [CCS-joined = false]]
-
-end
 
 
 
@@ -211,7 +193,7 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
   set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
   set OPEX-with-CCS ( electricity-price * electricity-consumption + oil-price * oil-consumption + (min(list current-capture-technology-capacity co2-production) * co2-storage-price)  + (max(list (co2-production - current-capture-technology-capacity) 0) * co2-emission-price) )
 
-  if ( current-capture-technology-price - subsidy-per-industry-without-ccs +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
+  if ( current-capture-technology-price +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
   [
     set CCS-joined true
     set color orange
@@ -241,10 +223,7 @@ to store-co2
   ask storage-points with [in-use = true]
     [
       ifelse co2-stored < capacity
-      [set co2-stored-current-year min list (capacity - co2-stored) sum [ co2-storage ] of industries
-      set co2-stored co2-stored + co2-stored-current-year
-      ask port-of-rotterdam 0 [set money money + co2-storage-price * co2-stored-current-year
-                               set co2-storage-income co2-storage-income + co2-storage-price * co2-stored-current-year]]
+      [set co2-stored co2-stored + min list (capacity - co2-stored) sum [ co2-storage ] of industries ]
       [
        set in-use false
        set full true
