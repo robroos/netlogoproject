@@ -4,7 +4,7 @@ globals [
          co2-storage-price
          co2-emission-price
          current-capture-technology-price
-         pipeline-price ; $ per meter
+         pipeline-price
          current-capture-technology-capacity
          total-co2-emitted
          total-co2-stored
@@ -81,7 +81,7 @@ to setup
   ]
 
   set-default-shape industries "factory"
-  create-industries initial-number-factories
+  create-industries 6
 
   [
     set color red
@@ -93,9 +93,10 @@ to setup
     set oil-consumption 3
     set CCS-joined False
     set co2-storage 0
+    set co2-emission co2-production
   ]
 
-  set-default-shape storage-points "chess rook"
+  set-default-shape storage-points "container"
   set current-capture-technology-price initial-capture-technology-price
   set current-capture-technology-capacity initial-capture-technology-capacity
 
@@ -133,7 +134,7 @@ to createe-storagepoints
                                        set full false
                                        set connected false
                                        set color orange ]]]
-  if ticks = 200 [
+  if ticks = 100 [
          ask patches with [ pycor = -5 and pxcor = -10 ]
             [sprout-storage-points 1 [ set capacity 400
                                        set size 2
@@ -150,30 +151,31 @@ to go
   capture-technology-development
   update-global-values
   pay-out-subsidy
-  ;update-KPI
+  update-KPI
   createe-storagepoints
   port-of-rotterdam-actions
   store-co2
-  emit-co2
   tick
 end
 
 to port-of-rotterdam-actions
-    if extensible-pipelines = false and any? storage-points with [ in-use = false and under-construction = false ]
+  if extensible-pipelines = false and any? storage-points with [ connected = false and under-construction = false ]
        [ ask industries with [CCS-joined = false] [ join-CCS ] ]
-    if (extensible-pipelines = true and any? storage-points with [ in-use = true ]) or (extensible-pipelines = true and count storage-points = 1)
-         [ ask industries with [CCS-joined = false] [ join-CCS ] ]
-    if any? industries with [CCS-joined = true]
+  if extensible-pipelines = true and any? storage-points with [ full = false ]
+       [ ask industries with [CCS-joined = false] [ join-CCS ] ]
+  if any? industries with [CCS-joined = true]
        [ build-pipelines ]
 end
 
 to pay-out-subsidy
-  ask port-of-rotterdam 0 [set money money + yearly-government-subsidy * fraction-subsidy-to-pora
-                           set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
-  ifelse count industries with [CCS-joined = true] = count industries
-    [set subsidy-per-industry-without-ccs 0]
-    [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries with [CCS-joined = false]]
-
+  ask port-of-rotterdam 0
+  [
+    set money money + yearly-government-subsidy * fraction-subsidy-to-pora
+    set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
+    ifelse count industries with [CCS-joined = true] = count industries
+      [set subsidy-per-industry-without-ccs 0]
+      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries with [CCS-joined = false]
+  ]
 end
 
 to build-pipelines
@@ -181,7 +183,7 @@ to build-pipelines
   [
   ask storage-points with [ in-use = false and under-construction = false and full = false and connected = false ]
    [
-      ifelse count storage-points > 1
+      ifelse count storage-points > 1 and any? storage-points with [ connected = true ]
       [ ifelse distance port-of-rotterdam 0 < distance min-one-of other storage-points with [ connected = true ] [ distance myself ]
          [ set under-construction true
            ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
@@ -191,10 +193,10 @@ to build-pipelines
            ask min-one-of other storage-points [ distance myself ] [ hatch-pipeline-builders 1 [ hide-turtle
                                                                                                  set start min-one-of storage-points [ distance myself ]
                                                                                                  set target min-one-of other storage-points with [ under-construction = true ] [ distance myself ]]]]]
-     [ set under-construction true
-       ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
-                                                             set start port-of-rotterdam 0
-                                                             set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
+      [ set under-construction true
+        ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
+                                                              set start port-of-rotterdam 0
+                                                              set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
    ]
   ]
   ask pipeline-builders [ if [ money ] of port-of-rotterdam 0 > distance target * pipeline-price
@@ -236,13 +238,12 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
 end
 
 to install-CCS
-  ask industries[
-  if CCS-joined = true and capture-technology-capacity = 0 [set capture-technology-capacity current-capture-technology-capacity
-                                                            set color green
-                                                            create-pipeline-with port-of-rotterdam 0
-                                                            set co2-storage min list co2-production capture-technology-capacity
-                                                            set co2-emission max list (co2-production - current-capture-technology-capacity) 0]
-  ]
+  ask industries [ if CCS-joined = true and capture-technology-capacity = 0 [
+                                                                              set capture-technology-capacity current-capture-technology-capacity
+                                                                              set color green
+                                                                              create-pipeline-with port-of-rotterdam 0
+                                                                            ]
+                 ]
 end
 
 to update-global-values
@@ -255,6 +256,18 @@ to update-global-values
 end
 
 to store-co2
+  ask industries with [ CCS-joined = true and capture-technology-capacity != 0 ]
+    [
+      ifelse any? storage-points with [in-use = true]
+        [
+          set co2-emission max list (co2-production - current-capture-technology-capacity) 0
+          set co2-storage min list co2-production capture-technology-capacity
+        ]
+        [
+          set co2-emission co2-production
+          set co2-storage 0
+        ]
+    ]
   ask storage-points with [in-use = true]
     [
       if capacity - co2-stored < sum [ co2-storage ] of industries [ set leftover sum [ co2-storage ] of industries - (capacity - co2-stored) ]
@@ -276,17 +289,13 @@ to store-co2
     ]
 end
 
-to emit-co2
-  ask industries[ set total-co2-emitted total-co2-emitted + co2-emission]
-end
+to update-KPI
+  set total-co2-stored sum [ co2-stored ] of storage-points
+  set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
 
-
-;to update-KPI
-;  if ticks != 0 and remainder ticks 12 = 0 [
- ;   set total-co2-emitted (total-co2-emitted + co2-production)
  ;  set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
  ;]
-;end
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 302
@@ -316,11 +325,11 @@ ticks
 30.0
 
 BUTTON
+10
+10
 65
-26
-131
-59
-NIL
+62
+Setup
 setup
 NIL
 1
@@ -332,42 +341,12 @@ NIL
 NIL
 1
 
-SLIDER
-59
-88
-233
-121
-initial-number-factories
-initial-number-factories
-0
-100
-6.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-39
-143
-247
-176
-initial-number-storage-points
-initial-number-storage-points
-0
-100
-4.0
-1
-1
-NIL
-HORIZONTAL
-
 BUTTON
-160
-25
-223
-58
-NIL
+72
+10
+128
+62
+Go
 go
 T
 1
@@ -380,10 +359,10 @@ NIL
 1
 
 INPUTBOX
-46
-195
-223
-255
+0
+440
+177
+500
 initial-capture-technology-price
 100.0
 1
@@ -391,10 +370,10 @@ initial-capture-technology-price
 Number
 
 INPUTBOX
-45
-277
-240
-337
+729
+440
+924
+500
 initial-capture-technology-capacity
 10.0
 1
@@ -402,10 +381,10 @@ initial-capture-technology-capacity
 Number
 
 INPUTBOX
-37
-346
-192
-406
+178
+440
+270
+500
 initial-oil-price
 10.0
 1
@@ -413,10 +392,10 @@ initial-oil-price
 Number
 
 INPUTBOX
-47
-427
-202
-487
+277
+440
+404
+500
 initial-electricity-price
 10.0
 1
@@ -424,10 +403,10 @@ initial-electricity-price
 Number
 
 INPUTBOX
-246
-455
-401
-515
+411
+440
+566
+500
 initial-co2-emission-price
 7.0
 1
@@ -435,10 +414,10 @@ initial-co2-emission-price
 Number
 
 INPUTBOX
-438
-470
-593
-530
+572
+440
+727
+500
 initial-co2-storage-price
 7.0
 1
@@ -446,15 +425,34 @@ initial-co2-storage-price
 Number
 
 SWITCH
-754
-126
-936
-159
+9
+69
+191
+102
 extensible-pipelines
 extensible-pipelines
 0
 1
 -1000
+
+PLOT
+738
+10
+1108
+223
+Plots
+Years
+Tons
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"CO2-stored" 1.0 0 -13791810 true "" "plot total-co2-stored"
+"CO2-emitted" 1.0 0 -2674135 true "" "plot total-co2-emitted"
 
 @#$#@#$#@
 ## WHAT IS IT?
