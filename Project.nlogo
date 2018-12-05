@@ -7,6 +7,7 @@ globals [
          onshore-pipeline-price
          offshore-pipeline-price
          current-capture-technology-capacity
+         capture-efficiency
          total-co2-emitted
          total-co2-stored
          total-co2-storage-industry-costs
@@ -14,6 +15,9 @@ globals [
          subsidy-per-industry-without-ccs
          dispatched-subsidy-infrastructure
          dispatched-subsidy-industry
+         oil-used
+         electricity-used
+         increase-energy-use-capture
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -36,6 +40,8 @@ industries-own [
                 distance-storage-point
                 electricity-consumption
                 oil-consumption
+                electricity-consumption-with-ccs
+                oil-consumption-with-ccs
                 co2-production
                 OPEX-without-CCS
                 OPEX-with-CCS
@@ -116,12 +122,12 @@ to setup
   set oil-price initial-oil-price
   set co2-emission-price initial-co2-emission-price
   set co2-storage-price initial-co2-storage-price
-
+  set increase-energy-use-capture 0.4
   set total-co2-emitted 0
   set co2-stored-current-year 0
-
   set yearly-government-subsidy 100
   set fraction-subsidy-to-pora 0.7
+  set capture-efficiency 0.8
   reset-ticks
 end
 
@@ -186,7 +192,7 @@ to pay-out-subsidy
     set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
     ifelse count industries with [CCS-joined = true] = count industries
       [set subsidy-per-industry-without-ccs 0]
-      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ;with [CCS-joined = false]
+      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ;with [CCS-joined = false] nog even kijken naar subsidieverdeling > kan deze ook gebruikt worden om co2-storage van te betalen?
   ]
 end
 
@@ -257,7 +263,7 @@ end
 
 to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as a result of ineffeciency
   set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
-  set OPEX-with-CCS ( electricity-price * electricity-consumption + oil-price * oil-consumption + (min(list current-capture-technology-capacity co2-production) * co2-storage-price)  + (max(list (co2-production - current-capture-technology-capacity) 0) * co2-emission-price) )
+  set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption * (1 + increase-energy-use-capture) + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price
 
   if ( current-capture-technology-price - subsidy-per-industry-without-ccs +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period) )
   [
@@ -271,6 +277,8 @@ end
 to install-CCS
   ask industries [ if CCS-joined = true and capture-technology-capacity = 0 [
                                                                               set capture-technology-capacity current-capture-technology-capacity
+                                                                              set electricity-consumption-with-ccs electricity-consumption * (1 + increase-energy-use-capture)
+                                                                              set oil-consumption-with-ccs oil-consumption * (1 + increase-energy-use-capture)
                                                                               set color green
                                                                               create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
                                                                             ]
@@ -282,8 +290,10 @@ to emit-store-co2
     [
       ifelse any? storage-points with [in-use = true]
         [
-          set co2-emission max list (co2-production - capture-technology-capacity) 0
-          set co2-storage min list co2-production capture-technology-capacity
+          set co2-emission max list (co2-production * (1 - capture-efficiency)) co2-production - capture-technology-capacity
+          set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
+          set electricity-consumption electricity-consumption-with-ccs
+          set oil-consumption oil-consumption-with-ccs
         ]
         [
           set co2-emission co2-production
@@ -316,8 +326,8 @@ to update-KPI
   set total-co2-stored sum [ co2-stored ] of storage-points
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * co2-stored-current-year
- ;  set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
- ;]
+  set oil-used oil-used + sum [oil-consumption] of industries
+  set electricity-used electricity-used + sum [electricity-consumption] of industries
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -393,10 +403,10 @@ initial-capture-technology-price
 Number
 
 INPUTBOX
-729
-440
-924
-500
+0
+502
+177
+562
 initial-capture-technology-capacity
 10.0
 1
@@ -454,7 +464,7 @@ SWITCH
 102
 extensible-pipelines
 extensible-pipelines
-0
+1
 1
 -1000
 
@@ -463,7 +473,7 @@ PLOT
 10
 1108
 223
-Plots
+Emission and Storage of CO2
 Years
 Tons
 0.0
@@ -512,7 +522,7 @@ PLOT
 231
 1107
 426
-Costs to industry to store co2
+Costs to industry to store CO2
 Year
 Costs
 0.0
@@ -562,11 +572,32 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot dispatched-subsidy-industry"
 
 PLOT
-970
-448
-1524
-780
-plot 1
+1110
+430
+1518
+606
+Finance of Port of Rotterdam
+Years
+Euros
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Money" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
+"Storage income" 1.0 0 -7500403 true "" "plot [co2-storage-income] of port-of-rotterdam 0"
+"Subsidy income" 1.0 0 -13840069 true "" "plot [subsidy-income] of port-of-rotterdam 0"
+"Infrastructure expenditure" 1.0 0 -2674135 true "" "plot [pipeline-expenditure] of port-of-rotterdam 0"
+
+PLOT
+1109
+10
+1514
+224
+Total amount of energy used
 NIL
 NIL
 0.0
@@ -577,10 +608,27 @@ true
 true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
-"pen-1" 1.0 0 -7500403 true "" "plot [co2-storage-income] of port-of-rotterdam 0"
-"pen-2" 1.0 0 -2674135 true "" "plot [subsidy-income] of port-of-rotterdam 0"
-"pen-3" 1.0 0 -955883 true "" "plot [pipeline-expenditure] of port-of-rotterdam 0"
+"Oil use" 1.0 0 -16777216 true "" "plot oil-used"
+"Electricity use" 1.0 0 -7500403 true "" "plot electricity-used"
+
+PLOT
+743
+429
+1107
+607
+Dispatched Subsidy by Government
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Infrastructure" 1.0 0 -16777216 true "" "plot dispatched-subsidy-infrastructure"
+"Industry" 1.0 0 -7500403 true "" "plot dispatched-subsidy-industry"
 
 @#$#@#$#@
 ## WHAT IS IT?
