@@ -4,7 +4,8 @@ globals [
          co2-storage-price
          co2-emission-price
          current-capture-technology-price
-         pipeline-price
+         onshore-pipeline-price
+         offshore-pipeline-price
          current-capture-technology-capacity
          total-co2-emitted
          total-co2-stored
@@ -21,10 +22,12 @@ breed [storage-points storage-point]
 breed [pipeline-builders pipeline-builder]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [money
+ports-of-rotterdam-own [
+                        money
                         co2-storage-income
                         subsidy-income
-                        pipeline-expenditure]
+                        pipeline-expenditure
+                       ]
 
 industries-own [
                 payback-period
@@ -57,9 +60,8 @@ pipeline-builders-own[
                      ]
 
 pipelines-own [
-               extensible
-               pipeline-distance
-               max-capacity
+                extensible
+                max-capacity
               ]
 
 to setup
@@ -100,7 +102,15 @@ to setup
   set current-capture-technology-price initial-capture-technology-price
   set current-capture-technology-capacity initial-capture-technology-capacity
 
-  set pipeline-price 10
+  ifelse extensible-pipelines = true
+   [
+     set onshore-pipeline-price 20
+     set offshore-pipeline-price 30
+   ]
+   [
+     set onshore-pipeline-price 15
+     set offshore-pipeline-price 25
+   ]
 
   set electricity-price initial-electricity-price
   set oil-price initial-oil-price
@@ -201,19 +211,34 @@ to build-pipelines
                                                               set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
    ]
   ]
-  ask pipeline-builders [ if [ money ] of port-of-rotterdam 0 > distance target * pipeline-price
+
+  ask pipeline-builders [ if ([ pcolor ] of target = 96 and [ money ] of port-of-rotterdam 0 > distance target * offshore-pipeline-price) or ([ pcolor ] of target = 68 and [ money ] of port-of-rotterdam 0 > distance target * onshore-pipeline-price)
                             [
                               face target
-                              ask storage-points in-radius 2 [ if connected = false [ create-pipeline-with [ start ] of myself [ set extensible extensible-pipelines ]
-                                                                                      ask port-of-rotterdam 0 [ set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * pipeline-price
-                                                                                                                set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * pipeline-price]
+                              ask storage-points in-radius 2 [ if connected = false [ create-pipeline-with [ start ] of myself [
+                                                                                                                                 set extensible extensible-pipelines
+                                                                                                                                 set color 3
+                                                                                                                               ]
+                                                                                      ask port-of-rotterdam 0 [ ifelse [ pcolor ] of myself = 96
+                                                                                                                [
+                                                                                                                  set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * offshore-pipeline-price
+                                                                                                                  set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * offshore-pipeline-price
+                                                                                                                ]
+                                                                                                                [
+                                                                                                                  set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * onshore-pipeline-price
+                                                                                                                  set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * onshore-pipeline-price
+                                                                                                                ]
+                                                                                                              ]
                                                                                       set under-construction false
                                                                                       set connected true
                                                                                       set color orange
                                                                                       if count storage-points with [ connected = true ] = 1 or all? other storage-points [full = true] [ set in-use true set color green ]
                                                                                       ask pipeline-builders in-radius 2 [ die ] ]]
                               fd 2
-                              create-pipeline-with start
+                              create-pipeline-with start [
+                                                           set extensible extensible-pipelines
+                                                           set color 3
+                                                         ]
                             ]
                         ]
 end
@@ -247,7 +272,7 @@ to install-CCS
   ask industries [ if CCS-joined = true and capture-technology-capacity = 0 [
                                                                               set capture-technology-capacity current-capture-technology-capacity
                                                                               set color green
-                                                                              create-pipeline-with port-of-rotterdam 0
+                                                                              create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
                                                                             ]
                  ]
 end
