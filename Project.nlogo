@@ -146,8 +146,7 @@ end
 
 to go
   install-CCS
-  capture-technology-development
-  update-global-values
+  update-prices
   pay-out-subsidy
   allocate-storagepoints
   port-of-rotterdam-actions
@@ -216,14 +215,17 @@ to build-pipelines
                         ]
 end
 
-to capture-technology-development
+to update-prices
   if ticks != 0 and remainder ticks 12 = 0
     [
       set current-capture-technology-price current-capture-technology-price * 0.9
       set current-capture-technology-capacity current-capture-technology-capacity * 1.1
+      set electricity-price electricity-price * 0.95
+      set oil-price oil-price * 1.05
+      set co2-emission-price co2-emission-price * 1.05
+      set co2-storage-price co2-storage-price * 0.95
     ]
 end
-
 
 to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as a result of ineffeciency
   set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
@@ -244,15 +246,6 @@ to install-CCS
                                                                               create-pipeline-with port-of-rotterdam 0
                                                                             ]
                  ]
-end
-
-to update-global-values
-  if ticks != 0 and remainder ticks 12 = 0 [
-    set electricity-price electricity-price * 1.05   ;;#uit een csv file halen
-    set oil-price oil-price * 1.05
-    set co2-emission-price co2-emission-price * 1.05
-    set co2-storage-price co2-storage-price * 0.95
-  ]
 end
 
 to emit-store-co2
