@@ -10,8 +10,6 @@ globals [
          total-co2-stored
          total-co2-storage-industry-costs
          co2-stored-current-year
-         yearly-government-subsidy
-         fraction-subsidy-to-pora
          subsidy-per-industry-without-ccs
         ]
 
@@ -115,7 +113,7 @@ to setup
   reset-ticks
 end
 
-to createe-storagepoints
+to allocate-storagepoints
   if ticks = 5 [
          ask patches with [ pycor = 18 and pxcor = 18 ]
             [sprout-storage-points 1 [ set capacity 400
@@ -151,18 +149,20 @@ to go
   capture-technology-development
   update-global-values
   pay-out-subsidy
-  update-KPI
-  createe-storagepoints
+  allocate-storagepoints
   port-of-rotterdam-actions
-  store-co2
+  emit-store-co2
+  update-KPI
   tick
 end
 
 to port-of-rotterdam-actions
   if extensible-pipelines = false and any? storage-points with [ connected = false and under-construction = false ]
-       [ ask industries with [CCS-joined = false] [ join-CCS ] ]
+       [ ask industries with [CCS-joined = false]
+          [ join-CCS ] ]
   if extensible-pipelines = true and any? storage-points with [ full = false ]
-       [ ask industries with [CCS-joined = false] [ join-CCS ] ]
+       [ ask industries with [CCS-joined = false]
+          [ join-CCS ] ]
   if any? industries with [CCS-joined = true]
        [ build-pipelines ]
 end
@@ -255,12 +255,12 @@ to update-global-values
   ]
 end
 
-to store-co2
+to emit-store-co2
   ask industries with [ CCS-joined = true and capture-technology-capacity != 0 ]
     [
       ifelse any? storage-points with [in-use = true]
         [
-          set co2-emission max list (co2-production - current-capture-technology-capacity) 0
+          set co2-emission max list (co2-production - capture-technology-capacity) 0
           set co2-storage min list co2-production capture-technology-capacity
         ]
         [
@@ -453,6 +453,36 @@ true
 PENS
 "CO2-stored" 1.0 0 -13791810 true "" "plot total-co2-stored"
 "CO2-emitted" 1.0 0 -2674135 true "" "plot total-co2-emitted"
+
+SLIDER
+9
+109
+206
+142
+yearly-government-subsidy
+yearly-government-subsidy
+0
+1000
+192.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+9
+148
+207
+181
+fraction-subsidy-to-pora
+fraction-subsidy-to-pora
+0
+1
+0.5
+0.1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
