@@ -11,6 +11,8 @@ globals [
          total-co2-storage-industry-costs
          co2-stored-current-year
          subsidy-per-industry-without-ccs
+         dispatched-subsidy-infrastructure
+         dispatched-subsidy-industry
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -170,10 +172,11 @@ to pay-out-subsidy
   ask port-of-rotterdam 0
   [
     set money money + yearly-government-subsidy * fraction-subsidy-to-pora
+    set dispatched-subsidy-infrastructure dispatched-subsidy-infrastructure + yearly-government-subsidy * fraction-subsidy-to-pora
     set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
     ifelse count industries with [CCS-joined = true] = count industries
       [set subsidy-per-industry-without-ccs 0]
-      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries with [CCS-joined = false]
+      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ;with [CCS-joined = false]
   ]
 end
 
@@ -235,7 +238,8 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
   [
     set CCS-joined true
     set color orange
-    set total-co2-storage-industry-costs (total-co2-storage-industry-costs + current-capture-technology-price) ;update industry co2 costs with CAPEX
+    set total-co2-storage-industry-costs total-co2-storage-industry-costs + current-capture-technology-price ;update industry co2 costs with CAPEX
+    set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
   ]
 end
 
@@ -259,6 +263,7 @@ to emit-store-co2
         [
           set co2-emission co2-production
           set co2-storage 0
+          set co2-stored-current-year 0
         ]
     ]
   ask storage-points with [in-use = true]
@@ -285,7 +290,7 @@ end
 to update-KPI
   set total-co2-stored sum [ co2-stored ] of storage-points
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
-
+  set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * co2-stored-current-year
  ;  set total-co2-storage-industry-costs total-co2-storage-industry-costs + (min(list capture-technology-capacity co2-production) * co2-storage-price) ;update industry co2 costs with co2 storage costs
  ;]
 end
@@ -456,7 +461,7 @@ yearly-government-subsidy
 yearly-government-subsidy
 0
 1000
-192.0
+100.0
 1
 1
 NIL
@@ -471,11 +476,86 @@ fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-0.5
+0.7
 0.1
 1
 NIL
 HORIZONTAL
+
+PLOT
+741
+231
+1107
+426
+Costs to industry to store co2
+Year
+Costs
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot total-co2-storage-industry-costs"
+
+PLOT
+1312
+234
+1512
+428
+Subsidy to Infrastructure
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot dispatched-subsidy-infrastructure"
+
+PLOT
+1110
+233
+1310
+427
+Subsidy to Industries
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot dispatched-subsidy-industry"
+
+PLOT
+970
+448
+1524
+780
+plot 1
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
+"pen-1" 1.0 0 -7500403 true "" "plot [co2-storage-income] of port-of-rotterdam 0"
+"pen-2" 1.0 0 -2674135 true "" "plot [subsidy-income] of port-of-rotterdam 0"
+"pen-3" 1.0 0 -955883 true "" "plot [pipeline-expenditure] of port-of-rotterdam 0"
 
 @#$#@#$#@
 ## WHAT IS IT?
