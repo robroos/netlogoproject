@@ -1,3 +1,5 @@
+extensions [ csv ]
+
 globals [
          electricity-price
          oil-price
@@ -18,6 +20,8 @@ globals [
          oil-used
          electricity-used
          increase-energy-use-capture
+         ton-co2-emission-per-ton-oil
+         connection-price
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -46,11 +50,18 @@ industries-own [
                 OPEX-without-CCS
                 OPEX-with-CCS
                 CCS-joined
+                pipe-joined
                 co2-storage
                 co2-emission
                ]
 
 storage-points-own [
+                     ;nieuw
+                     name
+                     pipe-capacity
+                     pipe-capex
+
+                     ;oud
                      capacity
                      co2-stored
                      in-use
@@ -67,14 +78,33 @@ pipeline-builders-own[
 
 pipelines-own [
                 extensible
+                used-capacity
                 max-capacity
+                joined-industries
               ]
 
 to setup
   clear-all
+  file-close-all
+
   ask patches [set pcolor 96]
   ask patches with [pxcor <= max-pxcor and pxcor >= -2]
     [ set pcolor 68 ]
+
+  set ton-co2-emission-per-ton-oil 3.2
+  set connection-price 1
+  set electricity-price 75
+  file-open "co2-oil-price.csv"
+  let x csv:from-row file-read-line
+  set co2-emission-price item 1 x
+  set oil-price item 2 x
+  set co2-storage-price initial-co2-storage-price
+  set increase-energy-use-capture 0.4
+  set total-co2-emitted 0
+  set co2-stored-current-year 0
+  set yearly-government-subsidy 100
+  set fraction-subsidy-to-pora 0.7
+  set capture-efficiency 0.8
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
@@ -89,24 +119,23 @@ to setup
   ]
 
   set-default-shape industries "factory"
-  create-industries 6
-
-  [
-    set color red
-    set size 2
-    setxy -2 + random-float 6  -3 + random-float 6
-    set payback-period (1 + random 20)
-    set co2-production (1 + random 10)
-    set electricity-consumption 3
-    set oil-consumption 3
-    set CCS-joined False
-    set co2-storage 0
-    set co2-emission co2-production
-  ]
+  ask n-of 25 patches with [ (pxcor > -1 and pxcor < 5) and (pycor > -7 and pycor < 7) ] [ sprout-industries 1 [
+                                                                                                                 set color red
+                                                                                                                 set size 1
+                                                                                                                 set payback-period (1 + random 20)
+                                                                                                                 set oil-consumption random 10 + 1
+                                                                                                                 set co2-production oil-consumption * ton-co2-emission-per-ton-oil
+                                                                                                                 set electricity-consumption 3
+                                                                                                                 set CCS-joined false
+                                                                                                                 set pipe-joined false
+                                                                                                                 set co2-storage 0
+                                                                                                                 set co2-emission co2-production
+                                                                                                               ]
+                                                                                         ]
 
   set-default-shape storage-points "container"
-  set current-capture-technology-price initial-capture-technology-price
-  set current-capture-technology-capacity initial-capture-technology-capacity
+  set current-capture-technology-price 200
+  set current-capture-technology-capacity 5
 
   ifelse extensible-pipelines = true
    [
@@ -118,70 +147,46 @@ to setup
      set offshore-pipeline-price 25
    ]
 
-  set electricity-price initial-electricity-price
-  set oil-price initial-oil-price
-  set co2-emission-price initial-co2-emission-price
-  set co2-storage-price initial-co2-storage-price
-  set increase-energy-use-capture 0.4
-  set total-co2-emitted 0
-  set co2-stored-current-year 0
-  set yearly-government-subsidy 100
-  set fraction-subsidy-to-pora 0.7
-  set capture-efficiency 0.8
   reset-ticks
-end
-
-to allocate-storagepoints
-  if ticks = 5 [
-         ask patches with [ pycor = 18 and pxcor = 18 ]
-            [sprout-storage-points 1 [ set capacity 400
-                                       set size 2
-                                       set in-use false
-                                       set under-construction false
-                                       set full false
-                                       set connected false
-                                       set color orange ]]]
-  if ticks = 30 [
-         ask patches with [ pycor = 12 and pxcor = 18 ]
-            [sprout-storage-points 1 [ set capacity 400
-                                       set size 2
-                                       set in-use false
-                                       set under-construction false
-                                       set full false
-                                       set connected false
-                                       set color orange ]]]
-  if ticks = 100 [
-         ask patches with [ pycor = -5 and pxcor = -10 ]
-            [sprout-storage-points 1 [ set capacity 400
-                                       set size 2
-                                       set in-use false
-                                       set under-construction false
-                                       set full false
-                                       set connected false
-                                       set color orange ]]]
-
 end
 
 to go
   install-CCS
   update-prices
   pay-out-subsidy
-  allocate-storagepoints
   port-of-rotterdam-actions
+  build-pipelines
+  allocate-storagepoints
   emit-store-co2
   update-KPI
   tick
 end
 
+to allocate-storagepoints
+  if count storage-points = 0 or all? pipelines [ used-capacity = max-capacity ]
+    [
+      file-open "storagepoints.csv"
+      ifelse file-at-end? = false
+        [ let x csv:from-row file-read-line
+          create-storage-points 1 [
+                                    setxy random-xcor random-ycor
+                                    set name item 0 x
+                                    set pipe-capacity item 3 x
+                                    set pipe-capex item 1 x * item 4 x + item 2 x * item 5 x
+                                    set in-use false
+                                  ]
+        ]
+        [ ]
+    ]
+end
+
 to port-of-rotterdam-actions
-  if extensible-pipelines = false and any? storage-points with [ connected = false and under-construction = false ]
-       [ ask industries with [CCS-joined = false]
+  if any? pipelines with [ extensible = false and used-capacity = 0 ]
+       [ ask industries with [ CCS-joined = false ]
           [ join-CCS ] ]
-  if extensible-pipelines = true and any? storage-points with [ full = false ]
-       [ ask industries with [CCS-joined = false]
+  if any? pipelines with [ extensible = true and used-capacity < max-capacity ]
+       [ ask industries with [ CCS-joined = false ]
           [ join-CCS ] ]
-  if any? industries with [CCS-joined = true]
-       [ build-pipelines ]
 end
 
 to pay-out-subsidy
@@ -197,68 +202,33 @@ to pay-out-subsidy
 end
 
 to build-pipelines
-  if not any? storage-points with [ under-construction = true]
-  [
-  ask storage-points with [ in-use = false and under-construction = false and full = false and connected = false ]
-   [
-      ifelse count storage-points > 1 and any? storage-points with [ connected = true ]
-      [ ifelse distance port-of-rotterdam 0 < distance min-one-of other storage-points with [ connected = true ] [ distance myself ]
-         [ set under-construction true
-           ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
-                                                                 set start port-of-rotterdam 0
-                                                                 set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
-         [ set under-construction true
-           ask min-one-of other storage-points [ distance myself ] [ hatch-pipeline-builders 1 [ hide-turtle
-                                                                                                 set start min-one-of storage-points [ distance myself ]
-                                                                                                 set target min-one-of other storage-points with [ under-construction = true ] [ distance myself ]]]]]
-      [ set under-construction true
-        ask port-of-rotterdam 0 [ hatch-pipeline-builders 1 [ hide-turtle
-                                                              set start port-of-rotterdam 0
-                                                              set target min-one-of storage-points with [ under-construction = true ] [ distance myself ]]]]
-   ]
-  ]
-
-  ask pipeline-builders [ if ([ pcolor ] of target = 96 and [ money ] of port-of-rotterdam 0 > distance target * offshore-pipeline-price) or ([ pcolor ] of target = 68 and [ money ] of port-of-rotterdam 0 > distance target * onshore-pipeline-price)
-                            [
-                              face target
-                              ask storage-points in-radius 2 [ if connected = false [ create-pipeline-with [ start ] of myself [
-                                                                                                                                 set extensible extensible-pipelines
-                                                                                                                                 set color 3
-                                                                                                                               ]
-                                                                                      ask port-of-rotterdam 0 [ ifelse [ pcolor ] of myself = 96
-                                                                                                                [
-                                                                                                                  set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * offshore-pipeline-price
-                                                                                                                  set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * offshore-pipeline-price
-                                                                                                                ]
-                                                                                                                [
-                                                                                                                  set money money - distance [ target ] of min-one-of pipeline-builders [ distance myself ] * onshore-pipeline-price
-                                                                                                                  set pipeline-expenditure pipeline-expenditure + distance [ target ] of min-one-of pipeline-builders [ distance myself ] * onshore-pipeline-price
-                                                                                                                ]
-                                                                                                              ]
-                                                                                      set under-construction false
-                                                                                      set connected true
-                                                                                      set color orange
-                                                                                      if count storage-points with [ connected = true ] = 1 or all? other storage-points [full = true] [ set in-use true set color green ]
-                                                                                      ask pipeline-builders in-radius 2 [ die ] ]]
-                              fd 2
-                              create-pipeline-with start [
-                                                           set extensible extensible-pipelines
-                                                           set color 3
-                                                         ]
-                            ]
-                        ]
+  if any? storage-points and [ money ] of port-of-rotterdam 0 > [ pipe-capex ] of one-of storage-points with [ in-use = false ]
+    [ ask port-of-rotterdam 0 [
+                                create-pipeline-with one-of storage-points with [ in-use = false ] [
+                                                                                                     set used-capacity 0
+                                                                                                     set max-capacity [ pipe-capacity ] of one-of storage-points with [ in-use = false ]
+                                                                                                     ifelse random 3 = 1
+                                                                                                       [ set extensible true ]
+                                                                                                       [ set extensible false ]
+                                                                                                     set joined-industries []
+                                                                                                   ]
+                                set money money - [ pipe-capex ] of one-of storage-points with [ in-use = false ]
+                                ask storage-points with [ in-use = false ] [ set in-use true ]
+                              ]
+    ]
 end
 
 to update-prices
-  if ticks != 0 and remainder ticks 12 = 0
-    [
       set current-capture-technology-price current-capture-technology-price * 0.9
       set current-capture-technology-capacity current-capture-technology-capacity * 1.1
       set electricity-price electricity-price * 0.95
-      set oil-price oil-price * 1.05
-      set co2-emission-price co2-emission-price * 1.05
       set co2-storage-price co2-storage-price * 0.95
-    ]
+
+      if file-at-end? [ stop ]
+      file-open "co2-oil-price.csv"
+      let x csv:from-row file-read-line
+      set co2-emission-price item 1 x
+      set oil-price item 2 x
 end
 
 to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as a result of ineffeciency
@@ -281,8 +251,33 @@ to install-CCS
                                                                               set oil-consumption-with-ccs oil-consumption * (1 + increase-energy-use-capture)
                                                                               set color green
                                                                               create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
+                                                                              ask port-of-rotterdam 0 [ set money money + connection-price ]
                                                                             ]
                  ]
+end
+
+to join-pipe-and-store-emit
+  ask industries with [ CCS-joined = true and capture-technology-capacity != 0 and pipe-joined = false ]
+   [
+    ifelse any? pipelines with [ extensible = true and used-capacity < max-capacity ] or any?  pipelines with [ extensible = false and used-capacity = 0 ]
+      [
+        set pipe-joined true
+        set co2-emission max list (co2-production * (1 - capture-efficiency)) co2-production - capture-technology-capacity
+        set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
+        set electricity-consumption electricity-consumption-with-ccs
+        set oil-consumption oil-consumption-with-ccs
+        ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ] [
+                                                                                                                                           set used-capacity used-capacity + [ co2-storage ] of myself
+                                                                                                                                           set joined-industries lput [ who ] of myself joined-industries
+                                                                                                                                         ]
+      ]
+      [
+        set co2-emission co2-production
+        set co2-storage 0
+        set co2-stored-current-year 0
+      ]
+   ]
+
 end
 
 to emit-store-co2
@@ -323,7 +318,7 @@ to emit-store-co2
 end
 
 to update-KPI
-  set total-co2-stored sum [ co2-stored ] of storage-points
+  set total-co2-stored total-co2-stored + sum [ used-capacity ] of pipelines
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * co2-stored-current-year
   set oil-used oil-used + sum [oil-consumption] of industries
@@ -390,61 +385,6 @@ NIL
 NIL
 NIL
 1
-
-INPUTBOX
-0
-440
-177
-500
-initial-capture-technology-price
-100.0
-1
-0
-Number
-
-INPUTBOX
-0
-502
-177
-562
-initial-capture-technology-capacity
-10.0
-1
-0
-Number
-
-INPUTBOX
-178
-440
-270
-500
-initial-oil-price
-10.0
-1
-0
-Number
-
-INPUTBOX
-277
-440
-404
-500
-initial-electricity-price
-10.0
-1
-0
-Number
-
-INPUTBOX
-411
-440
-566
-500
-initial-co2-emission-price
-7.0
-1
-0
-Number
 
 INPUTBOX
 572
