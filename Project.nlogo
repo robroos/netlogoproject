@@ -51,8 +51,11 @@ industries-own [
 storage-points-own [
                      name
                      pipe-capacity
-                     pipe-capex
                      connected
+                     onshore-distance
+                     offshore-distance
+                     onshore-capex
+                     offshore-capex
                    ]
 
 pipelines-own [
@@ -72,12 +75,12 @@ to setup
 
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 75
+  set electricity-price 0.000075
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
   set oil-price item 2 x
-  set co2-storage-price 200
+  set co2-storage-price 0.3
   set capture-electricity-usage 0.4
   set total-co2-emitted 0
   set co2-stored-current-year 0
@@ -141,8 +144,11 @@ to allocate-storagepoints
           create-storage-points 1 [
                                     setxy random-xcor random-ycor
                                     set name item 0 x
-                                    set pipe-capacity item 3 x * 1000000
-                                    set pipe-capex item 1 x * item 4 x + item 2 x * item 5 x
+                                    set pipe-capacity item 3 x
+                                    set onshore-distance item 1 x
+                                    set offshore-distance item 2 x
+                                    set onshore-capex item 4 x
+                                    set offshore-capex item 5 x
                                     set connected false
                                   ]
         ]
@@ -164,27 +170,41 @@ to pay-out-subsidy
 end
 
 to build-pipelines
-  if any? storage-points with [ connected = false ] and [ money ] of port-of-rotterdam 0 > [ pipe-capex ] of one-of storage-points with [ connected = false ]
+  ask port-of-rotterdam 0
     [
-      ask port-of-rotterdam 0 [
-                                create-pipeline-with one-of storage-points with [ connected = false ]
-                                  [
-                                    set used-capacity 0
-                                    set max-capacity [ pipe-capacity ] of one-of storage-points with [ connected = false ]
-                                    ifelse random 3 = 1
-                                      [
-                                        set extensible true
-                                        set last-pipeline "extensible"
-                                      ]
-                                      [
-                                        set extensible false
-                                        set last-pipeline "fixed"
-                                      ]
-                                    set joined-industries []
-                                  ]
-                                set money money - [ pipe-capex ] of one-of storage-points with [ connected = false ]
-                                ask storage-points with [ connected = false ] [ set connected true ]
-                              ]
+      if any? storage-points with [ connected = false ]
+        [
+          let sp one-of storage-points with [ connected = false ]
+          ifelse [ pipe-capacity ] of sp - sum [ min list co2-production current-capture-technology-capacity ] of industries with [ CCS-joined = true ] <= 0.1 * [ pipe-capacity ] of sp
+            [
+              let pipe-capex [ onshore-distance * onshore-capex * 0.7 + offshore-distance * offshore-capex * 0.7 ] of sp
+              if money >= pipe-capex
+                [
+                  create-pipeline-with sp
+                    [
+                      set used-capacity 0
+                      set max-capacity [ pipe-capacity ] of sp
+                      set extensible false
+                    ]
+                  set money money - pipe-capex
+                  ask sp [ set connected true ]
+                ]
+            ]
+            [
+              let pipe-capex [ onshore-distance * onshore-capex + offshore-distance * offshore-capex ] of sp
+              if money >= pipe-capex
+                [
+                  create-pipeline-with sp
+                    [
+                      set used-capacity 0
+                      set max-capacity [ pipe-capacity ] of sp
+                      set extensible true
+                    ]
+                  set money money - pipe-capex
+                  ask sp [ set connected true ]
+                ]
+            ]
+        ]
     ]
 end
 
