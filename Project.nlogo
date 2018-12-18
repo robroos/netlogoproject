@@ -20,6 +20,7 @@ globals [
           increase-energy-use-capture
           ton-co2-emission-per-ton-oil
           connection-price
+          last-pipeline
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -137,7 +138,7 @@ to go
 end
 
 to allocate-storagepoints
-  if count storage-points = 0 or all? pipelines [ used-capacity = max-capacity ]
+  if count storage-points = 0 or all? pipelines with [ extensible = true ] [ used-capacity = max-capacity ] or last-pipeline = "fixed"
     [
       file-open "storagepoints.csv"
       ifelse file-at-end? = false
@@ -176,8 +177,14 @@ to build-pipelines
                                     set used-capacity 0
                                     set max-capacity [ pipe-capacity ] of one-of storage-points with [ connected = false ]
                                     ifelse random 3 = 1
-                                      [ set extensible true ]
-                                      [ set extensible false ]
+                                      [
+                                        set extensible true
+                                        set last-pipeline "extensible"
+                                      ]
+                                      [
+                                        set extensible false
+                                        set last-pipeline "fixed"
+                                      ]
                                     set joined-industries []
                                   ]
                                 set money money - [ pipe-capex ] of one-of storage-points with [ connected = false ]
@@ -205,7 +212,7 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
          ask industries with [ CCS-joined = false ]
            [
              set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
-             set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption * (1 + increase-energy-use-capture) + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price
+             set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption * (1 + increase-energy-use-capture) + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
              if current-capture-technology-price - subsidy-per-industry-without-ccs +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period)
               [
                 set CCS-joined true
@@ -249,7 +256,11 @@ to join-pipe-and-store-emit
               ]
               [
                 let rest max-capacity - used-capacity
-                ask myself [ set leftover co2-storage - rest ]
+                ask myself [
+                             set leftover co2-storage - rest
+                             set co2-emission leftover
+                             set co2-storage co2-storage - leftover
+                           ]
                 set used-capacity max-capacity
                 set joined-industries lput [ who ] of myself joined-industries
               ]
@@ -268,6 +279,8 @@ to join-pipe-and-store-emit
         [
           ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
             [ set used-capacity used-capacity + [ leftover ] of myself ]
+          set co2-emission co2-emission - leftover
+          set co2-storage co2-storage + leftover
           set leftover 0
         ]
     ]
@@ -285,8 +298,8 @@ end
 GRAPHICS-WINDOW
 225
 10
-722
-508
+622
+408
 -1
 -1
 9.5
