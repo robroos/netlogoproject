@@ -11,11 +11,9 @@ globals [
           total-co2-emitted
           total-co2-stored
           total-co2-storage-industry-costs
-          co2-stored-current-year
           subsidy-per-industry-without-ccs
           dispatched-subsidy-infrastructure
           dispatched-subsidy-industry
-          oil-used
           electricity-used
           capture-electricity-usage
           ton-co2-emission-per-ton-oil
@@ -28,12 +26,7 @@ breed [industries industry]
 breed [storage-points storage-point]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [
-                         money
-                         co2-storage-income
-                         subsidy-income
-                         pipeline-expenditure
-                       ]
+ports-of-rotterdam-own [ money ]
 
 industries-own [
                  payback-period
@@ -81,11 +74,8 @@ to setup
   set co2-emission-price item 1 x
   set oil-price item 2 x
   set co2-storage-price 0.3
-  set capture-electricity-usage 0.4
+  set capture-electricity-usage 130000000
   set total-co2-emitted 0
-  set co2-stored-current-year 0
-  set yearly-government-subsidy 100
-  set fraction-subsidy-to-pora 0.7
   set capture-efficiency 0.8
   set current-capture-technology-price 200
   set current-capture-technology-capacity 5
@@ -96,10 +86,7 @@ to setup
     set color white
     set size 2
     setxy -2 0
-    set money 1000
-    set co2-storage-income 0
-    set subsidy-income 0
-    set pipeline-expenditure 0
+    set money 2000
   ]
 
   set-default-shape industries "factory"
@@ -107,7 +94,7 @@ to setup
     [ sprout-industries 1 [
                             set color red
                             set size 1
-                            set payback-period (1 + random 20)
+                            set payback-period random 20 + 1
                             set oil-consumption random 10 + 1
                             set co2-production oil-consumption * ton-co2-emission-per-ton-oil
                             set electricity-consumption 0
@@ -125,48 +112,47 @@ to setup
 end
 
 to go
-  update-prices
-  update-KPI
   install-CCS
+  update-prices
   pay-out-subsidy
   join-CCS
   build-pipelines
   allocate-storagepoints
+  join-pipe-and-store-emit
+  if ticks = 31 [ stop ]
   tick
 end
 
 to allocate-storagepoints
-  if count storage-points = 0 or all? pipelines with [ extensible = true ] [ used-capacity = max-capacity ] or last-pipeline = "fixed"
+  if not any? storage-points with [ connected = false ] and (count storage-points = 0 or all? pipelines with [ extensible = true ] [ used-capacity = max-capacity ] or last-pipeline = "fixed")
     [
       file-open "storagepoints.csv"
-      ifelse file-at-end? = false
-        [ let x csv:from-row file-read-line
-          create-storage-points 1 [
-                                    setxy random-xcor random-ycor
-                                    set name item 0 x
-                                    set pipe-capacity item 3 x
-                                    set onshore-distance item 1 x
-                                    set offshore-distance item 2 x
-                                    set onshore-capex item 4 x
-                                    set offshore-capex item 5 x
-                                    set connected false
-                                  ]
+      if file-at-end? [ stop ]
+      let x csv:from-row file-read-line
+      create-storage-points 1
+        [
+          setxy random-xcor random-ycor
+          set name item 0 x
+          set pipe-capacity item 3 x
+          set onshore-distance item 1 x
+          set offshore-distance item 2 x
+          set onshore-capex item 4 x
+          set offshore-capex item 5 x
+          set connected false
         ]
-        [ ]
     ]
 end
 
 
 to pay-out-subsidy
   ask port-of-rotterdam 0
-  [
-    set money money + yearly-government-subsidy * fraction-subsidy-to-pora
-    set dispatched-subsidy-infrastructure dispatched-subsidy-infrastructure + yearly-government-subsidy * fraction-subsidy-to-pora
-    set subsidy-income subsidy-income + yearly-government-subsidy * fraction-subsidy-to-pora]
-    ifelse count industries with [CCS-joined = true] = count industries
-      [set subsidy-per-industry-without-ccs 0]
-      [set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ;with [CCS-joined = false] nog even kijken naar subsidieverdeling > kan deze ook gebruikt worden om co2-storage van te betalen?
-  ]
+    [
+      set money money + yearly-government-subsidy * fraction-subsidy-to-pora
+      set dispatched-subsidy-infrastructure dispatched-subsidy-infrastructure + yearly-government-subsidy * fraction-subsidy-to-pora
+    ]
+  ifelse count industries with [CCS-joined = true] = count industries
+    [ set subsidy-per-industry-without-ccs 0 ]
+    [ set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ]
 end
 
 to build-pipelines
@@ -175,7 +161,7 @@ to build-pipelines
       if any? storage-points with [ connected = false ]
         [
           let sp one-of storage-points with [ connected = false ]
-          ifelse [ pipe-capacity ] of sp - sum [ min list co2-production current-capture-technology-capacity ] of industries with [ CCS-joined = true ] <= 0.1 * [ pipe-capacity ] of sp
+          ifelse sum [ min list co2-production current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-treshold-extensible * [ pipe-capacity ] of sp
             [
               let pipe-capex [ onshore-distance * onshore-capex * 0.7 + offshore-distance * offshore-capex * 0.7 ] of sp
               if money >= pipe-capex
@@ -185,6 +171,8 @@ to build-pipelines
                       set used-capacity 0
                       set max-capacity [ pipe-capacity ] of sp
                       set extensible false
+                      set color yellow
+                      set joined-industries []
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
@@ -199,6 +187,7 @@ to build-pipelines
                       set used-capacity 0
                       set max-capacity [ pipe-capacity ] of sp
                       set extensible true
+                      set joined-industries []
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
@@ -214,57 +203,67 @@ to update-prices
       set electricity-price electricity-price * 0.95
       set co2-storage-price co2-storage-price * 0.95
 
-      if file-at-end? [ stop ]
       file-open "co2-oil-price.csv"
+      if file-at-end? [ stop ]
       let x csv:from-row file-read-line
       set co2-emission-price item 1 x
       set oil-price item 2 x
 end
 
-to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as a result of ineffeciency
-  if any? pipelines with [ (extensible = false and used-capacity = 0) or (extensible = true and used-capacity < max-capacity) ]
-       [
-         ask industries with [ CCS-joined = false ]
-           [
-             let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price
+to join-CCS
+   ask industries with [ CCS-joined = false ]
+     [
+       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price
 
-             let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
-             let co2-to-be-emitted max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity
-             let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production  + oil-price * oil-consumption
+       let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
+       let co2-to-be-emitted co2-production - co2-to-be-captured
+       let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production + oil-price * oil-consumption
 
-             let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price + co2-to-be-emitted * co2-emission-price
-             let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
-             ;set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
-             if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
-              [
-                set CCS-joined true
-                set color orange
-                set total-co2-storage-industry-costs total-co2-storage-industry-costs + current-capture-technology-price ;update industry co2 costs with CAPEX
-                set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
-              ]
-           ]
-       ]
+       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price + co2-to-be-emitted * co2-emission-price
+       let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+       ;set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
+       if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
+        [
+          set CCS-joined true
+          set color orange
+          set total-co2-storage-industry-costs total-co2-storage-industry-costs + current-capture-technology-price - subsidy-per-industry-without-ccs ;update industry co2 costs with CAPEX
+          set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
+        ]
+     ]
 end
 
 to install-CCS
-  ask industries [ if CCS-joined = true and capture-technology-capacity = 0
-                     [
-                       set capture-technology-capacity current-capture-technology-capacity
-                       set color green
-                       create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
-                       ask port-of-rotterdam 0 [ set money money + connection-price ]
-                     ]
+  ask industries [
+                    if CCS-joined = true and capture-technology-capacity = 0
+                      [
+                        set capture-technology-capacity current-capture-technology-capacity
+                        create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
+                        ask port-of-rotterdam 0 [ set money money + connection-price ]
+                        set total-co2-storage-industry-costs total-co2-storage-industry-costs + connection-price
+                      ]
                  ]
 end
 
 to join-pipe-and-store-emit
+  ask industries with [ leftover > 0 ]
+    [
+      if any? pipelines with [ extensible = true and used-capacity < max-capacity ] or any?  pipelines with [ extensible = false and used-capacity = 0 ]
+        [
+          ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
+            [ set used-capacity used-capacity + [ leftover ] of myself ]
+          set co2-emission co2-emission - leftover
+          set co2-storage co2-storage + leftover
+          set leftover 0
+        ]
+    ]
   ask industries with [ CCS-joined = true and capture-technology-capacity != 0 and pipe-joined = false ]
    [
     ifelse any? pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
       [
         set pipe-joined true
-        set co2-emission max list (co2-production * (1 - capture-efficiency)) co2-production - capture-technology-capacity
+        set color green
         set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
+        set co2-emission co2-production - co2-storage
         set electricity-consumption min list capture-technology-capacity co2-production * capture-electricity-usage
         ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
           [
@@ -289,39 +288,24 @@ to join-pipe-and-store-emit
       [
         set co2-emission co2-production
         set co2-storage 0
-        set co2-stored-current-year 0
       ]
    ]
-  ask industries with [ leftover > 0 ]
-    [
-      if any? pipelines with [ extensible = true and used-capacity < max-capacity ] or any?  pipelines with [ extensible = false and used-capacity = 0 ]
-        [
-          ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
-            [ set used-capacity used-capacity + [ leftover ] of myself ]
-          set co2-emission co2-emission - leftover
-          set co2-storage co2-storage + leftover
-          set leftover 0
-        ]
-    ]
-  ask pipelines [ if used-capacity = max-capacity [ set color red ] ]
-end
-
-to update-KPI
+  ask pipelines [ if used-capacity > 0 and used-capacity = max-capacity [ set color red ] ]
+  ask port-of-rotterdam 0 [ set money money + sum [ used-capacity ] of pipelines * co2-storage-price ]
   set total-co2-stored total-co2-stored + sum [ used-capacity ] of pipelines
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
-  set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * co2-stored-current-year
-  set oil-used oil-used + sum [ oil-consumption ] of industries
+  set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-225
-10
-622
+312
+13
+706
 408
 -1
 -1
-9.5
+9.415
 1
 10
 1
@@ -382,7 +366,7 @@ PLOT
 223
 Emission and Storage of CO2
 Years
-Tons
+CO2 (MTon)
 0.0
 10.0
 0.0
@@ -397,13 +381,13 @@ PENS
 SLIDER
 8
 68
-205
-101
+218
+102
 yearly-government-subsidy
 yearly-government-subsidy
 0
-1000
-100.0
+50
+15.0
 1
 1
 NIL
@@ -431,7 +415,7 @@ PLOT
 426
 Costs to industry to store CO2
 Year
-Costs
+Costs (Million Euros)
 0.0
 10.0
 0.0
@@ -443,10 +427,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot total-co2-storage-industry-costs"
 
 PLOT
-1312
+1335
 234
-1512
-428
+1548
+429
 Subsidy to Infrastructure
 NIL
 NIL
@@ -463,8 +447,8 @@ PENS
 PLOT
 1110
 233
-1310
-427
+1333
+428
 Subsidy to Industries
 NIL
 NIL
@@ -485,57 +469,66 @@ PLOT
 606
 Finance of Port of Rotterdam
 Years
-Euros
+Million Euros
 0.0
 10.0
 0.0
 10.0
 true
-true
+false
 "" ""
 PENS
 "Money" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
-"Storage income" 1.0 0 -7500403 true "" "plot [co2-storage-income] of port-of-rotterdam 0"
-"Subsidy income" 1.0 0 -13840069 true "" "plot [subsidy-income] of port-of-rotterdam 0"
-"Infrastructure expenditure" 1.0 0 -2674135 true "" "plot [pipeline-expenditure] of port-of-rotterdam 0"
 
 PLOT
 1109
 10
-1514
-224
-Total amount of energy used
-NIL
-NIL
+1333
+225
+Total amount of electricity used
+Years
+Electricity (MWh)
 0.0
 10.0
 0.0
 10.0
 true
-true
+false
 "" ""
 PENS
-"Oil use" 1.0 0 -16777216 true "" "plot oil-used"
 "Electricity use" 1.0 0 -7500403 true "" "plot electricity-used"
 
-PLOT
-743
-429
-1107
-607
-Dispatched Subsidy by Government
+BUTTON
+137
+13
+199
+65
+Go
+go
+NIL
+1
+T
+OBSERVER
 NIL
 NIL
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" ""
-PENS
-"Infrastructure" 1.0 0 -16777216 true "" "plot dispatched-subsidy-infrastructure"
-"Industry" 1.0 0 -7500403 true "" "plot dispatched-subsidy-industry"
+NIL
+NIL
+1
+
+SLIDER
+9
+143
+222
+177
+capacity-treshold-extensible
+capacity-treshold-extensible
+0
+1
+0.3
+0.1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
