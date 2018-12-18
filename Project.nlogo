@@ -17,7 +17,7 @@ globals [
           dispatched-subsidy-industry
           oil-used
           electricity-used
-          increase-energy-use-capture
+          capture-electricity-usage
           ton-co2-emission-per-ton-oil
           connection-price
           last-pipeline
@@ -38,14 +38,9 @@ ports-of-rotterdam-own [
 industries-own [
                  payback-period
                  capture-technology-capacity
-                 capture-technology-price
                  electricity-consumption
                  oil-consumption
-                 electricity-consumption-with-ccs
-                 oil-consumption-with-ccs
                  co2-production
-                 OPEX-without-CCS
-                 OPEX-with-CCS
                  CCS-joined
                  pipe-joined
                  co2-storage
@@ -83,7 +78,7 @@ to setup
   set co2-emission-price item 1 x
   set oil-price item 2 x
   set co2-storage-price 200
-  set increase-energy-use-capture 0.4
+  set capture-electricity-usage 0.4
   set total-co2-emitted 0
   set co2-stored-current-year 0
   set yearly-government-subsidy 100
@@ -112,7 +107,7 @@ to setup
                             set payback-period (1 + random 20)
                             set oil-consumption random 10 + 1
                             set co2-production oil-consumption * ton-co2-emission-per-ton-oil
-                            set electricity-consumption 3
+                            set electricity-consumption 0
                             set CCS-joined false
                             set pipe-joined false
                             set co2-storage 0
@@ -211,9 +206,16 @@ to join-CCS ;; the electricity (and oil?) consumption raises when CCS is used as
        [
          ask industries with [ CCS-joined = false ]
            [
-             set OPEX-without-CCS (electricity-price * electricity-consumption + oil-price * oil-consumption + co2-production * co2-emission-price)
-             set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption * (1 + increase-energy-use-capture) + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
-             if current-capture-technology-price - subsidy-per-industry-without-ccs +  (payback-period * OPEX-with-CCS) < (OPEX-without-CCS * payback-period)
+             let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price
+
+             let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
+             let co2-to-be-emitted max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity
+             let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production  + oil-price * oil-consumption
+
+             let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price + co2-to-be-emitted * co2-emission-price
+             let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+             ;set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
+             if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
               [
                 set CCS-joined true
                 set color orange
@@ -228,8 +230,6 @@ to install-CCS
   ask industries [ if CCS-joined = true and capture-technology-capacity = 0
                      [
                        set capture-technology-capacity current-capture-technology-capacity
-                       set electricity-consumption-with-ccs electricity-consumption * (1 + increase-energy-use-capture)
-                       set oil-consumption-with-ccs oil-consumption * (1 + increase-energy-use-capture)
                        set color green
                        create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
                        ask port-of-rotterdam 0 [ set money money + connection-price ]
@@ -245,8 +245,7 @@ to join-pipe-and-store-emit
         set pipe-joined true
         set co2-emission max list (co2-production * (1 - capture-efficiency)) co2-production - capture-technology-capacity
         set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
-        set electricity-consumption electricity-consumption-with-ccs
-        set oil-consumption oil-consumption-with-ccs
+        set electricity-consumption min list capture-technology-capacity co2-production * capture-electricity-usage
         ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
           [
             ifelse [ co2-storage ] of myself <=  max-capacity - used-capacity
