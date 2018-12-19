@@ -311,7 +311,7 @@ to predict-storage-price
 
   let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
   let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / mean [ co2-production ] of industries
+  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) /
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
