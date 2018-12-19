@@ -1,4 +1,8 @@
-extensions [ csv ]
+extensions [
+             csv
+             matrix
+           ]
+
 
 globals [
           electricity-price
@@ -19,6 +23,8 @@ globals [
           ton-co2-emission-per-ton-oil
           connection-price
           last-pipeline
+          co2-emission-price-data
+          co2-storage-price-data
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -39,6 +45,10 @@ industries-own [
                  co2-storage
                  co2-emission
                  leftover
+                 co2-emission-price-expectation
+                 co2-storage-price-expectation
+                 co2-emission-price-perceived
+                 co2-storage-price-perceived
                ]
 
 storage-points-own [
@@ -79,6 +89,8 @@ to setup
   set capture-efficiency 0.8
   set current-capture-technology-price 200
   set current-capture-technology-capacity 5
+  set co2-emission-price-data []
+  set co2-storage-price-data []
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
@@ -103,6 +115,17 @@ to setup
                             set co2-storage 0
                             set co2-emission co2-production
                             set leftover 0
+                            ifelse industry-expectations = true
+                              [
+                                set co2-emission-price-expectation co2-emission-price
+                                set co2-storage-price-expectation co2-storage-price
+                              ]
+                              [
+                                set co2-emission-price-expectation "none"
+                                set co2-storage-price-expectation "none"
+                              ]
+                            set co2-emission-price-perceived co2-emission-price
+                            set co2-storage-price-perceived co2-storage-price
                           ]
     ]
 
@@ -119,6 +142,7 @@ to go
   build-pipelines
   allocate-storagepoints
   join-pipe-and-store-emit
+  expectations
   if ticks = 31 [ stop ]
   tick
 end
@@ -213,15 +237,25 @@ end
 to join-CCS
    ask industries with [ CCS-joined = false ]
      [
-       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price
+       ifelse industry-expectations = true
+         [
+           set co2-emission-price-perceived co2-emission-price-expectation
+           set co2-storage-price-perceived co2-storage-price-expectation
+         ]
+         [
+           set co2-emission-price-perceived co2-emission-price
+           set co2-storage-price-perceived co2-storage-price
+         ]
+
+       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price-perceived
 
        let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
        let co2-to-be-emitted co2-production - co2-to-be-captured
        let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production + oil-price * oil-consumption
 
-       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price + co2-to-be-emitted * co2-emission-price
+       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price-perceived + co2-to-be-emitted * co2-emission-price-perceived
        let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
-       ;set OPEX-with-CCS electricity-price * electricity-consumption * (1 + increase-energy-use-capture) + oil-price * oil-consumption + (min list current-capture-technology-capacity (co2-production * capture-efficiency)) * co2-storage-price + (max list (co2-production * (1 - capture-efficiency)) co2-production - current-capture-technology-capacity) * co2-emission-price + connection-price
+
        if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
         [
           set CCS-joined true
@@ -230,6 +264,18 @@ to join-CCS
           set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
         ]
      ]
+end
+
+to expectations
+  if industry-expectations = true
+    [
+      set co2-emission-price-data lput co2-emission-price co2-emission-price-data
+      set co2-storage-price-data lput co2-storage-price co2-storage-price-data
+      ask industries [
+                       set co2-emission-price-expectation item 0 matrix:forecast-linear-growth co2-emission-price-data
+                       set co2-storage-price-expectation item 0 matrix:forecast-linear-growth co2-storage-price-data
+                     ]
+    ]
 end
 
 to install-CCS
@@ -382,7 +428,7 @@ SLIDER
 8
 68
 218
-102
+101
 yearly-government-subsidy
 yearly-government-subsidy
 0
@@ -519,7 +565,7 @@ SLIDER
 9
 143
 222
-177
+176
 capacity-treshold-extensible
 capacity-treshold-extensible
 0
@@ -529,6 +575,17 @@ capacity-treshold-extensible
 1
 NIL
 HORIZONTAL
+
+SWITCH
+10
+180
+205
+213
+industry-expectations
+industry-expectations
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
