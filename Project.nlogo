@@ -138,11 +138,11 @@ to go
   install-CCS
   update-prices
   pay-out-subsidy
+  expectations
   join-CCS
   build-pipelines
   allocate-storagepoints
   join-pipe-and-store-emit
-  expectations
   if ticks = 31 [ stop ]
   tick
 end
@@ -234,6 +234,18 @@ to update-prices
       set oil-price item 2 x
 end
 
+to expectations
+  if industry-expectations = true
+    [
+      set co2-emission-price-data lput co2-emission-price co2-emission-price-data
+      set co2-storage-price-data lput co2-storage-price co2-storage-price-data
+      ask industries [
+                       set co2-emission-price-expectation item 0 matrix:forecast-linear-growth co2-emission-price-data
+                       set co2-storage-price-expectation item 0 matrix:forecast-linear-growth co2-storage-price-data
+                     ]
+    ]
+end
+
 to join-CCS
    ask industries with [ CCS-joined = false ]
      [
@@ -264,18 +276,6 @@ to join-CCS
           set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
         ]
      ]
-end
-
-to expectations
-  if industry-expectations = true
-    [
-      set co2-emission-price-data lput co2-emission-price co2-emission-price-data
-      set co2-storage-price-data lput co2-storage-price co2-storage-price-data
-      ask industries [
-                       set co2-emission-price-expectation item 0 matrix:forecast-linear-growth co2-emission-price-data
-                       set co2-storage-price-expectation item 0 matrix:forecast-linear-growth co2-storage-price-data
-                     ]
-    ]
 end
 
 to install-CCS
