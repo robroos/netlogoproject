@@ -47,8 +47,6 @@ industries-own [
                  leftover
                  co2-emission-price-expectation
                  co2-storage-price-expectation
-                 co2-emission-price-perceived
-                 co2-storage-price-perceived
                ]
 
 storage-points-own [
@@ -124,8 +122,6 @@ to setup
                                 set co2-emission-price-expectation "none"
                                 set co2-storage-price-expectation "none"
                               ]
-                            set co2-emission-price-perceived co2-emission-price
-                            set co2-storage-price-perceived co2-storage-price
                           ]
     ]
 
@@ -240,8 +236,11 @@ to expectations
       set co2-emission-price-data lput co2-emission-price co2-emission-price-data
       set co2-storage-price-data lput co2-storage-price co2-storage-price-data
       ask industries [
-                       set co2-emission-price-expectation item 0 matrix:forecast-linear-growth co2-emission-price-data
-                       set co2-storage-price-expectation item 0 matrix:forecast-linear-growth co2-storage-price-data
+                       carefully [
+                                   set co2-emission-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
+                                   set co2-storage-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
+                                 ]
+                                 [ print "There is a zero or negative number in the co2-oil-price.csv file. Compound growth forecast can't take the natural log of zero or a negative number" ]
                      ]
     ]
 end
@@ -249,14 +248,12 @@ end
 to join-CCS
    ask industries with [ CCS-joined = false ]
      [
-       ifelse industry-expectations = true
+       let co2-emission-price-perceived co2-emission-price
+       let co2-storage-price-perceived co2-storage-price
+       if industry-expectations = true
          [
            set co2-emission-price-perceived co2-emission-price-expectation
            set co2-storage-price-perceived co2-storage-price-expectation
-         ]
-         [
-           set co2-emission-price-perceived co2-emission-price
-           set co2-storage-price-perceived co2-storage-price
          ]
 
        let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price-perceived
@@ -583,7 +580,7 @@ SWITCH
 213
 industry-expectations
 industry-expectations
-1
+0
 1
 -1000
 
