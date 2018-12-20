@@ -75,7 +75,7 @@ to setup
   set co2-emission-price item 1 x
   set oil-price item 2 x
   set co2-storage-price 0.3
-  set capture-electricity-usage 130;000000
+  set capture-electricity-usage 130000000
   set total-co2-emitted 0
   set capture-efficiency 0.8
   set current-capture-technology-price 200
@@ -300,6 +300,8 @@ to join-pipe-and-store-emit
 end
 
 to predict-storage-price
+  if ticks = 0
+  [
   let average-production mean [ co2-production ] of industries
   let average-payback-period mean [ payback-period ] of industries
 
@@ -311,7 +313,9 @@ to predict-storage-price
 
   let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
   let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / mean [ co2-production ] of industries
+  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+  set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
