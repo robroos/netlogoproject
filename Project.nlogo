@@ -23,6 +23,7 @@ globals [
           ton-co2-emission-per-ton-oil
           connection-price
           last-pipeline
+          predicted-storage-price
           co2-emission-price-data
           co2-storage-price-data
         ]
@@ -221,13 +222,14 @@ to update-prices
       set current-capture-technology-price current-capture-technology-price * 0.9
       set current-capture-technology-capacity current-capture-technology-capacity * 1.1
       set electricity-price electricity-price * 0.95
-      set co2-storage-price co2-storage-price * 0.95
 
       file-open "co2-oil-price.csv"
       if file-at-end? [ stop ]
       let x csv:from-row file-read-line
       set co2-emission-price item 1 x
       set oil-price item 2 x
+      if predict-storage-price?
+        [predict-storage-price]
 end
 
 to expectations
@@ -340,6 +342,25 @@ to join-pipe-and-store-emit
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
 end
+
+to predict-storage-price
+  if ticks = 0
+  [
+  let average-production mean [ co2-production ] of industries
+  let average-payback-period mean [ payback-period ] of industries
+
+  let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
+  let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+  let average-emission-costs-without-ccs average-production * co2-emission-price
+  let average-storage average-production * capture-efficiency
+  let average-emission-costs-with-ccs (average-production - average-storage) * co2-emission-price
+
+  let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
+  let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
+  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+  set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+  ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 312
@@ -411,9 +432,9 @@ Emission and Storage of CO2
 Years
 CO2 (MTon)
 0.0
-10.0
+35.0
 0.0
-10.0
+15000.0
 true
 true
 "" ""
@@ -460,9 +481,9 @@ Costs to industry to store CO2
 Year
 Costs (Million Euros)
 0.0
-10.0
+35.0
 0.0
-10.0
+5000.0
 true
 false
 "" ""
@@ -478,9 +499,9 @@ Subsidy to Infrastructure
 NIL
 NIL
 0.0
-10.0
+35.0
 0.0
-10.0
+500.0
 true
 false
 "" ""
@@ -496,9 +517,9 @@ Subsidy to Industries
 NIL
 NIL
 0.0
-10.0
+35.0
 0.0
-10.0
+15.0
 true
 false
 "" ""
@@ -514,9 +535,9 @@ Finance of Port of Rotterdam
 Years
 Million Euros
 0.0
-10.0
+35.0
 0.0
-10.0
+3000.0
 true
 false
 "" ""
@@ -532,9 +553,9 @@ Total amount of electricity used
 Years
 Electricity (MWh)
 0.0
-10.0
+35.0
 0.0
-10.0
+150000.0
 true
 false
 "" ""
@@ -583,6 +604,25 @@ industry-expectations
 0
 1
 -1000
+
+PLOT
+98
+457
+298
+607
+CO2 storage-price
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot predicted-storage-price "
+
 
 @#$#@#$#@
 ## WHAT IS IT?
