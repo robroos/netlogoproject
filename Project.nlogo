@@ -1,4 +1,8 @@
-extensions [ csv ]
+extensions [
+             csv
+             matrix
+           ]
+
 
 globals [
           electricity-price
@@ -20,6 +24,8 @@ globals [
           connection-price
           last-pipeline
           predicted-storage-price
+          co2-emission-price-data
+          co2-storage-price-data
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -40,6 +46,8 @@ industries-own [
                  co2-storage
                  co2-emission
                  leftover
+                 co2-emission-price-expectation
+                 co2-storage-price-expectation
                ]
 
 storage-points-own [
@@ -80,6 +88,8 @@ to setup
   set capture-efficiency 0.8
   set current-capture-technology-price 200
   set current-capture-technology-capacity 5
+  set co2-emission-price-data []
+  set co2-storage-price-data []
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
@@ -104,6 +114,15 @@ to setup
                             set co2-storage 0
                             set co2-emission co2-production
                             set leftover 0
+                            ifelse industry-expectations = true
+                              [
+                                set co2-emission-price-expectation co2-emission-price
+                                set co2-storage-price-expectation co2-storage-price
+                              ]
+                              [
+                                set co2-emission-price-expectation "none"
+                                set co2-storage-price-expectation "none"
+                              ]
                           ]
     ]
 
@@ -116,6 +135,7 @@ to go
   install-CCS
   update-prices
   pay-out-subsidy
+  expectations
   join-CCS
   build-pipelines
   allocate-storagepoints
@@ -212,17 +232,41 @@ to update-prices
         [predict-storage-price]
 end
 
+to expectations
+  if industry-expectations = true
+    [
+      set co2-emission-price-data lput co2-emission-price co2-emission-price-data
+      set co2-storage-price-data lput co2-storage-price co2-storage-price-data
+      ask industries [
+                       carefully [
+                                   set co2-emission-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
+                                   set co2-storage-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
+                                 ]
+                                 [ print "There is a zero or negative number in the co2-oil-price.csv file. Compound growth forecast can't take the natural log of zero or a negative number" ]
+                     ]
+    ]
+end
+
 to join-CCS
    ask industries with [ CCS-joined = false ]
      [
-       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price
+       let co2-emission-price-perceived co2-emission-price
+       let co2-storage-price-perceived co2-storage-price
+       if industry-expectations = true
+         [
+           set co2-emission-price-perceived co2-emission-price-expectation
+           set co2-storage-price-perceived co2-storage-price-expectation
+         ]
+
+       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price-perceived
 
        let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
        let co2-to-be-emitted co2-production - co2-to-be-captured
        let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production + oil-price * oil-consumption
 
-       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price + co2-to-be-emitted * co2-emission-price
+       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price-perceived + co2-to-be-emitted * co2-emission-price-perceived
        let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+
        if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
         [
           set CCS-joined true
@@ -551,12 +595,12 @@ NIL
 HORIZONTAL
 
 SWITCH
-113
-309
-291
-342
-Predict-storage-price?
-Predict-storage-price?
+10
+180
+205
+213
+industry-expectations
+industry-expectations
 0
 1
 -1000
@@ -578,6 +622,7 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot predicted-storage-price "
+
 
 @#$#@#$#@
 ## WHAT IS IT?
