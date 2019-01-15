@@ -451,7 +451,7 @@ yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-15.0
+0.0
 1
 1
 NIL
@@ -466,7 +466,7 @@ fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-0.7
+0.0
 0.1
 1
 NIL
@@ -588,7 +588,7 @@ capacity-treshold-extensible
 capacity-treshold-extensible
 0
 1
-0.3
+0.0
 0.1
 1
 NIL
@@ -623,6 +623,16 @@ false
 PENS
 "default" 1.0 0 -16777216 true "" "plot predicted-storage-price "
 
+SWITCH
+10
+219
+216
+252
+predict-storage-price?
+predict-storage-price?
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
