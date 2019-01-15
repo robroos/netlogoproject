@@ -23,9 +23,9 @@ globals [
           ton-co2-emission-per-ton-oil
           connection-price
           last-pipeline
-          predicted-storage-price
           co2-emission-price-data
           co2-storage-price-data
+          co2-emission-target
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -33,7 +33,10 @@ breed [industries industry]
 breed [storage-points storage-point]
 undirected-link-breed [pipelines pipeline]
 
-ports-of-rotterdam-own [ money ]
+ports-of-rotterdam-own [
+                         money
+                         not-enough-money
+                       ]
 
 industries-own [
                  payback-period
@@ -77,7 +80,7 @@ to setup
 
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 0.000075
+  set electricity-price -0.000000008
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -90,6 +93,7 @@ to setup
   set current-capture-technology-capacity 5
   set co2-emission-price-data []
   set co2-storage-price-data []
+  set co2-emission-target 0
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
@@ -127,6 +131,7 @@ to setup
     ]
 
   set-default-shape storage-points "container"
+  allocate-storagepoints
 
   reset-ticks
 end
@@ -134,8 +139,10 @@ end
 to go
   install-CCS
   update-prices
+  consider-emission-targets
   pay-out-subsidy
   expectations
+  set-storage-price
   join-CCS
   build-pipelines
   allocate-storagepoints
@@ -164,6 +171,45 @@ to allocate-storagepoints
     ]
 end
 
+to consider-emission-targets
+  if consider-2050-emission-targets = true and ticks != 0
+    [
+      let distance-to-target sum [ co2-emission ] of industries - co2-emission-target
+      let years-left 31 - ticks
+
+      let joining-rate count industries with [ CCS-joined = true ] / ticks
+      let average-storage 0
+      carefully [ set average-storage mean [ min list current-capture-technology-capacity (co2-production * capture-efficiency) ]  of industries with [ CCS-joined = false ] ]
+                [ stop ]
+      let years-to-reach-target-1 0
+      carefully [ set years-to-reach-target-1 distance-to-target / ( joining-rate * average-storage ) ]
+                [ set years-to-reach-target-1 100 ]
+      if years-left < years-to-reach-target-1
+        [
+          set yearly-government-subsidy yearly-government-subsidy + 5
+          if fraction-subsidy-to-pora >= 0.1
+            [ set fraction-subsidy-to-pora fraction-subsidy-to-pora - 0.1 ]
+        ]
+
+
+      if [ not-enough-money ] of port-of-rotterdam 0 > 0
+        [
+          let building-speed count pipelines / ticks
+          let average-pipe-capacity 0
+          carefully [ set average-pipe-capacity mean [ max-capacity ] of pipelines ]
+                    [ stop ]
+          let years-to-reach-target-2 0
+          carefully [ set years-to-reach-target-2 distance-to-target / ( building-speed * average-pipe-capacity ) ]
+                    [ set years-to-reach-target-2 100 ]
+          if years-left < years-to-reach-target-2
+            [
+              set yearly-government-subsidy yearly-government-subsidy + 5
+              if fraction-subsidy-to-pora <= 0.8
+                [ set fraction-subsidy-to-pora fraction-subsidy-to-pora + 0.2 ]
+            ]
+        ]
+    ]
+end
 
 to pay-out-subsidy
   ask port-of-rotterdam 0
@@ -185,7 +231,7 @@ to build-pipelines
           ifelse sum [ min list co2-production current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-treshold-extensible * [ pipe-capacity ] of sp
             [
               let pipe-capex [ onshore-distance * onshore-capex * 0.7 + offshore-distance * offshore-capex * 0.7 ] of sp
-              if money >= pipe-capex
+              ifelse money >= pipe-capex
                 [
                   create-pipeline-with sp
                     [
@@ -197,11 +243,15 @@ to build-pipelines
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
+                  set not-enough-money 0
+                ]
+                [
+                  set not-enough-money not-enough-money + 1
                 ]
             ]
             [
               let pipe-capex [ onshore-distance * onshore-capex + offshore-distance * offshore-capex ] of sp
-              if money >= pipe-capex
+              ifelse money >= pipe-capex
                 [
                   create-pipeline-with sp
                     [
@@ -212,6 +262,10 @@ to build-pipelines
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
+                  set not-enough-money 0
+                ]
+                [
+                  set not-enough-money not-enough-money + 1
                 ]
             ]
         ]
@@ -222,14 +276,31 @@ to update-prices
       set current-capture-technology-price current-capture-technology-price * 0.9
       set current-capture-technology-capacity current-capture-technology-capacity * 1.1
       set electricity-price electricity-price * 0.95
+      set co2-storage-price co2-storage-price * 0.95
 
       file-open "co2-oil-price.csv"
       if file-at-end? [ stop ]
       let x csv:from-row file-read-line
       set co2-emission-price item 1 x
       set oil-price item 2 x
-      if predict-storage-price?
-        [predict-storage-price]
+end
+
+to set-storage-price
+  if ticks != 0 and predict-storage-price? = true
+  [
+  let average-production mean [ co2-production ] of industries
+  let average-payback-period mean [ payback-period ] of industries
+
+  let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
+  let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+  let average-emission-costs-without-ccs average-production * co2-emission-price
+  let average-storage average-production * capture-efficiency
+  let average-emission-costs-with-ccs (average-production - average-storage) * co2-emission-price
+
+  let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
+  let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
+  set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+  ]
 end
 
 to expectations
@@ -279,13 +350,13 @@ end
 
 to install-CCS
   ask industries [
-                    if CCS-joined = true and capture-technology-capacity = 0
-                      [
-                        set capture-technology-capacity current-capture-technology-capacity
-                        create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
-                        ask port-of-rotterdam 0 [ set money money + connection-price ]
-                        set total-co2-storage-industry-costs total-co2-storage-industry-costs + connection-price
-                      ]
+                   if CCS-joined = true and capture-technology-capacity = 0
+                     [
+                       set capture-technology-capacity current-capture-technology-capacity
+                       create-pipeline-with port-of-rotterdam 0 [ set color 3 ]
+                       ask port-of-rotterdam 0 [ set money money + connection-price ]
+                       set total-co2-storage-industry-costs total-co2-storage-industry-costs + connection-price
+                     ]
                  ]
 end
 
@@ -341,25 +412,6 @@ to join-pipe-and-store-emit
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
-end
-
-to predict-storage-price
-  if ticks = 0
-  [
-  let average-production mean [ co2-production ] of industries
-  let average-payback-period mean [ payback-period ] of industries
-
-  let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
-  let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
-  let average-emission-costs-without-ccs average-production * co2-emission-price
-  let average-storage average-production * capture-efficiency
-  let average-emission-costs-with-ccs (average-production - average-storage) * co2-emission-price
-
-  let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
-  let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-  set predicted-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
-  set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
-  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -432,9 +484,9 @@ Emission and Storage of CO2
 Years
 CO2 (MTon)
 0.0
-35.0
+10.0
 0.0
-15000.0
+10.0
 true
 true
 "" ""
@@ -443,30 +495,30 @@ PENS
 "CO2-emitted" 1.0 0 -2674135 true "" "plot total-co2-emitted"
 
 SLIDER
-8
-68
-218
-101
+10
+69
+263
+102
 yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-0.0
+485.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-8
+10
 105
-206
+263
 138
 fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-0.0
+2.7755575615628914E-17
 0.1
 1
 NIL
@@ -481,9 +533,9 @@ Costs to industry to store CO2
 Year
 Costs (Million Euros)
 0.0
-35.0
+10.0
 0.0
-5000.0
+10.0
 true
 false
 "" ""
@@ -499,9 +551,9 @@ Subsidy to Infrastructure
 NIL
 NIL
 0.0
-35.0
+10.0
 0.0
-500.0
+10.0
 true
 false
 "" ""
@@ -517,9 +569,9 @@ Subsidy to Industries
 NIL
 NIL
 0.0
-35.0
+10.0
 0.0
-15.0
+10.0
 true
 false
 "" ""
@@ -535,9 +587,9 @@ Finance of Port of Rotterdam
 Years
 Million Euros
 0.0
-35.0
+10.0
 0.0
-3000.0
+10.0
 true
 false
 "" ""
@@ -553,9 +605,9 @@ Total amount of electricity used
 Years
 Electricity (MWh)
 0.0
-35.0
+10.0
 0.0
-150000.0
+10.0
 true
 false
 "" ""
@@ -563,10 +615,10 @@ PENS
 "Electricity use" 1.0 0 -7500403 true "" "plot electricity-used"
 
 BUTTON
-137
-13
-199
-65
+136
+10
+192
+62
 Go
 go
 NIL
@@ -580,24 +632,24 @@ NIL
 1
 
 SLIDER
-9
-143
-222
-176
+12
+144
+262
+177
 capacity-treshold-extensible
 capacity-treshold-extensible
 0
 1
-0.0
+0.4
 0.1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-10
+12
 180
-205
+262
 213
 industry-expectations
 industry-expectations
@@ -605,32 +657,25 @@ industry-expectations
 1
 -1000
 
-PLOT
-98
-457
-298
-607
-CO2 storage-price
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot predicted-storage-price "
+SWITCH
+11
+217
+259
+250
+consider-2050-emission-targets
+consider-2050-emission-targets
+0
+1
+-1000
 
 SWITCH
-10
-219
-216
-252
+11
+258
+209
+291
 predict-storage-price?
 predict-storage-price?
-1
+0
 1
 -1000
 
