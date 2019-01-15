@@ -5,27 +5,27 @@ extensions [
 
 
 globals [
-          electricity-price
-          oil-price
-          co2-storage-price
-          co2-emission-price
-          current-capture-technology-price
-          current-capture-technology-capacity
-          capture-efficiency
-          total-co2-emitted
-          total-co2-stored
-          total-co2-storage-industry-costs
-          subsidy-per-industry-without-ccs
-          dispatched-subsidy-infrastructure
-          dispatched-subsidy-industry
-          electricity-used
-          capture-electricity-usage
-          ton-co2-emission-per-ton-oil
-          connection-price
-          last-pipeline
-          co2-emission-price-data
-          co2-storage-price-data
-          co2-emission-target
+          electricity-price ; this price is set by the environment (M€/MWh)
+          oil-price ; this price is set by the environment (M€/Mton)
+          co2-emission-price ; this price is set by the government (M€/Mton)
+          co2-storage-price ; this price is set by the port of rotterdam (M€/Mton)
+          current-capture-technology-price ; this price decreases over the years (M€)
+          current-capture-technology-capacity ; this capacity increases changes over the years (M€)
+          capture-efficiency ; this is the efficiency of the capture technology, set by the environment (%)
+          total-co2-emitted ; total CO2 emitted by the industries (Mton)
+          total-co2-stored ; total CO2 stored by the industries (Mton)
+          total-co2-storage-industry-costs ; total costs of the industry to store CO2 (M€)
+          subsidy-per-industry-without-ccs ; amount of governmental subsidy available per industry (M€)
+          dispatched-subsidy-infrastructure ; total amount of governmental subsidy spent by the port of rotterdam to build pipelines (M€)
+          dispatched-subsidy-industry ; total amount of governmentalsub subsidy spent by the industry to buy capture-technologies (M€)
+          electricity-used ; total amount of electricity used (MWh)
+          capture-electricity-usage ; amount of electricty need to store CO2 (MWh/ton)
+          ton-co2-emission-per-ton-oil ; amount of CO2 emissions per amount of burned oil (ton/ton)
+          connection-price ; price payed by the industries to the port of rotterdam build (M€)
+          last-pipeline ; this global is used later on to check whether the last build pipeline was either "fixed" or "extensible" (string)
+          co2-emission-price-data ; this global contains a list of CO2 emission prices over the years, used by the industries to predict next years CO2 emission price (M€/Mton)
+          co2-storage-price-data ; this global contains a list of CO2 storage prices over the years, used by the industries to predict next years CO2 storage price (M€/Mton)
+          co2-emission-target ; this is the C02-emission target of 2050, which is 0 (Mton)
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -34,8 +34,8 @@ breed [storage-points storage-point]
 undirected-link-breed [pipelines pipeline]
 
 ports-of-rotterdam-own [
-                         money
-                         not-enough-money
+                         money ; amount of money available to the port of rotterdam (M€)
+                         not-enough-money ; this turtles-own is used later on to check whether the port of rotterdam had enough money last year to build a pipeline (boolean)
                        ]
 
 industries-own [
@@ -74,9 +74,7 @@ to setup
   clear-all
   file-close-all
 
-  ask patches [set pcolor 96]
-  ask patches with [pxcor <= max-pxcor and pxcor >= -2]
-    [ set pcolor 68 ]
+  ask patches [set pcolor white]
 
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
@@ -192,7 +190,7 @@ to consider-emission-targets
         ]
 
 
-      if [ not-enough-money ] of port-of-rotterdam 0 > 0
+      if [ not-enough-money ] of port-of-rotterdam 0 = true
         [
           let building-speed count pipelines / ticks
           let average-pipe-capacity 0
@@ -243,10 +241,10 @@ to build-pipelines
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
-                  set not-enough-money 0
+                  set not-enough-money false
                 ]
                 [
-                  set not-enough-money not-enough-money + 1
+                  set not-enough-money true
                 ]
             ]
             [
@@ -262,10 +260,10 @@ to build-pipelines
                     ]
                   set money money - pipe-capex
                   ask sp [ set connected true ]
-                  set not-enough-money 0
+                  set not-enough-money false
                 ]
                 [
-                  set not-enough-money not-enough-money + 1
+                  set not-enough-money true
                 ]
             ]
         ]
@@ -503,7 +501,7 @@ yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-485.0
+317.0
 1
 1
 NIL
@@ -640,7 +638,7 @@ capacity-treshold-extensible
 capacity-treshold-extensible
 0
 1
-0.4
+0.7
 0.1
 1
 NIL
