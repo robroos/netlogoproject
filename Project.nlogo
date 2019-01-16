@@ -81,7 +81,7 @@ to setup
   set fraction-subsidy-to-pora 0.5
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 0
+  set electricity-price 75 * 10 ^ -10
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -281,7 +281,6 @@ to update-prices
       set current-capture-technology-price current-capture-technology-price * 0.9
       set current-capture-technology-capacity current-capture-technology-capacity * 1.1
       set electricity-price electricity-price * 0.95
-      set co2-storage-price co2-storage-price * 0.95
 
       file-open "co2-oil-price.csv"
       if file-at-end? [ stop ]
@@ -293,8 +292,8 @@ end
 to set-storage-price
   if ticks != 0 and predict-storage-price? = true
     [
-      let average-production mean [ co2-production ] of industries
-      let average-payback-period mean [ payback-period ] of industries
+      let average-production mean [ co2-production ] of industries with [ CCS-joined = false ]
+      let average-payback-period mean [ payback-period ] of industries with [ CCS-joined = false ]
 
       let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
       let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
@@ -304,12 +303,9 @@ to set-storage-price
 
       let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
       let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-      set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+
+      set co2-storage-price max list 0.3 (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage
     ]
-
-
-
-
 end
 
 to expectations
@@ -322,7 +318,7 @@ to expectations
                                    set co2-emission-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
                                    set co2-storage-price-expectation item 0 matrix:forecast-compound-growth co2-storage-price-data
                                  ]
-                                 [ print "There is a zero or negative number in the co2-oil-price.csv file. Compound growth forecast can't take the natural log of zero or a negative number" ]
+                                 [ print "There is a zero or negative number in the co2 emission data or in the co2 storage data. Compound growth forecast can't take the natural log of zero or a negative number" ]
                      ]
     ]
 end
@@ -431,8 +427,8 @@ end
 GRAPHICS-WINDOW
 264
 13
-698
-448
+611
+361
 -1
 -1
 8.27
@@ -667,7 +663,7 @@ SWITCH
 268
 industry-expectations
 industry-expectations
-1
+0
 1
 -1000
 
@@ -678,7 +674,7 @@ SWITCH
 306
 consider-2050-emission-targets
 consider-2050-emission-targets
-1
+0
 1
 -1000
 
@@ -689,7 +685,7 @@ SWITCH
 343
 predict-storage-price?
 predict-storage-price?
-1
+0
 1
 -1000
 
