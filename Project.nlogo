@@ -68,6 +68,7 @@ pipelines-own [
                 used-capacity
                 max-capacity
                 joined-industries
+                leftover-joined
               ]
 
 to setup
@@ -76,9 +77,11 @@ to setup
 
   ask patches [set pcolor white]
 
+  set yearly-government-subsidy 15
+  set fraction-subsidy-to-pora 0.5
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price -0.000000008
+  set electricity-price -0.00000000008
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -226,7 +229,7 @@ to build-pipelines
       if any? storage-points with [ connected = false ]
         [
           let sp one-of storage-points with [ connected = false ]
-          ifelse sum [ min list co2-production current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-treshold-extensible * [ pipe-capacity ] of sp
+          ifelse sum [ min list (co2-production * capture-efficiency) current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-treshold-extensible * [ pipe-capacity ] of sp
             [
               let pipe-capex [ onshore-distance * onshore-capex * 0.7 + offshore-distance * offshore-capex * 0.7 ] of sp
               ifelse money >= pipe-capex
@@ -361,10 +364,14 @@ end
 to join-pipe-and-store-emit
   ask industries with [ leftover > 0 ]
     [
-      if any? pipelines with [ extensible = true and used-capacity < max-capacity ] or any?  pipelines with [ extensible = false and used-capacity = 0 ]
+      if any? pipelines with [ (extensible = true and used-capacity < max-capacity) or ( extensible = false and used-capacity = 0 ) ]
         [
-          ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
-            [ set used-capacity used-capacity + [ leftover ] of myself ]
+          ask one-of pipelines with [ (extensible = true and max-capacity - used-capacity >= [ leftover ] of myself) or (extensible = false and used-capacity = 0) ]
+            [
+              set used-capacity used-capacity + [ leftover ] of myself
+              set joined-industries lput [ who ] of myself joined-industries
+              set leftover-joined true
+            ]
           set co2-emission co2-emission - leftover
           set co2-storage co2-storage + leftover
           set leftover 0
@@ -372,17 +379,18 @@ to join-pipe-and-store-emit
     ]
   ask industries with [ CCS-joined = true and capture-technology-capacity != 0 and pipe-joined = false ]
    [
-    ifelse any? pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
+    ifelse any? pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and (used-capacity = 0 or (leftover-joined = true and used-capacity < max-capacity) )) ]
       [
         set pipe-joined true
         set color green
         set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
         set co2-emission co2-production - co2-storage
-        set electricity-consumption min list capture-technology-capacity co2-production * capture-electricity-usage
-        ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and used-capacity = 0) ]
+        set electricity-consumption (min list capture-technology-capacity co2-production) * capture-electricity-usage
+        ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and (used-capacity = 0 or leftover-joined = true )) ]
           [
             ifelse [ co2-storage ] of myself <=  max-capacity - used-capacity
               [
+                if extensible = false and leftover-joined = true [ set leftover-joined false ]
                 set used-capacity used-capacity + [ co2-storage ] of myself
                 set joined-industries lput [ who ] of myself joined-industries
               ]
@@ -404,7 +412,7 @@ to join-pipe-and-store-emit
         set co2-storage 0
       ]
    ]
-  ask pipelines [ if used-capacity > 0 and used-capacity = max-capacity [ set color red ] ]
+  ask pipelines with [ extensible = true ] [ if used-capacity = max-capacity [ set color red ] ]
   ask port-of-rotterdam 0 [ set money money + sum [ used-capacity ] of pipelines * co2-storage-price ]
   set total-co2-stored total-co2-stored + sum [ used-capacity ] of pipelines
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
@@ -413,13 +421,13 @@ to join-pipe-and-store-emit
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-312
+264
 13
-706
-408
+724
+475
 -1
 -1
-9.415
+8.8
 1
 10
 1
@@ -440,10 +448,10 @@ ticks
 30.0
 
 BUTTON
-10
-10
-65
-62
+12
+27
+67
+79
 Setup
 setup
 NIL
@@ -457,10 +465,10 @@ NIL
 1
 
 BUTTON
-72
-10
-128
-62
+74
+27
+130
+79
 Go
 go
 T
@@ -474,10 +482,10 @@ NIL
 1
 
 PLOT
-738
-10
-1108
-223
+739
+14
+1109
+227
 Emission and Storage of CO2
 Years
 CO2 (MTon)
@@ -494,29 +502,29 @@ PENS
 
 SLIDER
 10
-69
-263
-102
+99
+252
+133
 yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-317.0
+35.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-10
-105
-263
-138
+9
+137
+252
+171
 fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-2.7755575615628914E-17
+0.10000000000000003
 0.1
 1
 NIL
@@ -595,10 +603,10 @@ PENS
 "Money" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
 
 PLOT
-1109
-10
-1333
-225
+1110
+14
+1334
+229
 Total amount of electricity used
 Years
 Electricity (MWh)
@@ -613,10 +621,10 @@ PENS
 "Electricity use" 1.0 0 -7500403 true "" "plot electricity-used"
 
 BUTTON
-136
-10
-192
-62
+138
+27
+194
+79
 Go
 go
 NIL
@@ -630,10 +638,10 @@ NIL
 1
 
 SLIDER
-12
-144
-262
-177
+9
+174
+252
+208
 capacity-treshold-extensible
 capacity-treshold-extensible
 0
@@ -645,10 +653,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-12
-180
-262
-213
+9
+235
+251
+269
 industry-expectations
 industry-expectations
 0
@@ -656,10 +664,10 @@ industry-expectations
 -1000
 
 SWITCH
-11
-217
-259
-250
+9
+273
+251
+307
 consider-2050-emission-targets
 consider-2050-emission-targets
 0
@@ -667,10 +675,10 @@ consider-2050-emission-targets
 -1000
 
 SWITCH
-11
-258
-209
-291
+9
+310
+251
+344
 predict-storage-price?
 predict-storage-price?
 0
