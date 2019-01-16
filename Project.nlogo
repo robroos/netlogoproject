@@ -81,7 +81,7 @@ to setup
   set fraction-subsidy-to-pora 0.5
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price -0.00000000008
+  set electricity-price 0
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -102,7 +102,7 @@ to setup
     set color white
     set size 2
     setxy -2 0
-    set money 2000
+    set money 10
   ]
 
   set-default-shape industries "factory"
@@ -173,43 +173,47 @@ to allocate-storagepoints
 end
 
 to consider-emission-targets
-  if consider-2050-emission-targets = true and ticks != 0
+  ifelse all? industries [ pipe-joined = true ]
+    [ set yearly-government-subsidy 0 ]
     [
-      let distance-to-target sum [ co2-emission ] of industries - co2-emission-target
-      let years-left 31 - ticks
-
-      let joining-rate count industries with [ CCS-joined = true ] / ticks
-      let average-storage 0
-      carefully [ set average-storage mean [ min list current-capture-technology-capacity (co2-production * capture-efficiency) ]  of industries with [ CCS-joined = false ] ]
-                [ stop ]
-      let years-to-reach-target-1 0
-      carefully [ set years-to-reach-target-1 distance-to-target / ( joining-rate * average-storage ) ]
-                [ set years-to-reach-target-1 100 ]
-      if years-left < years-to-reach-target-1
+      if consider-2050-emission-targets = true and ticks != 0
         [
-          set yearly-government-subsidy yearly-government-subsidy + 5
-          if fraction-subsidy-to-pora >= 0.1
-            [ set fraction-subsidy-to-pora fraction-subsidy-to-pora - 0.1 ]
-        ]
+          let distance-to-target sum [ co2-emission ] of industries - co2-emission-target
+          let years-left 31 - ticks
 
-
-      if [ not-enough-money ] of port-of-rotterdam 0 = true
-        [
-          let building-speed count pipelines / ticks
-          let average-pipe-capacity 0
-          carefully [ set average-pipe-capacity mean [ max-capacity ] of pipelines ]
+          let joining-rate count industries with [ CCS-joined = true ] / ticks
+          let average-storage 0
+          carefully [ set average-storage mean [ min list current-capture-technology-capacity (co2-production * capture-efficiency) ]  of industries with [ CCS-joined = false ] ]
                     [ stop ]
-          let years-to-reach-target-2 0
-          carefully [ set years-to-reach-target-2 distance-to-target / ( building-speed * average-pipe-capacity ) ]
-                    [ set years-to-reach-target-2 100 ]
-          if years-left < years-to-reach-target-2
+          let years-to-reach-target-1 0
+          carefully [ set years-to-reach-target-1 distance-to-target / ( joining-rate * average-storage ) ]
+                    [ set years-to-reach-target-1 100 ]
+          if years-left < years-to-reach-target-1
             [
               set yearly-government-subsidy yearly-government-subsidy + 5
-              if fraction-subsidy-to-pora <= 0.8
-                [ set fraction-subsidy-to-pora fraction-subsidy-to-pora + 0.2 ]
+              if fraction-subsidy-to-pora >= 0.1
+                [ set fraction-subsidy-to-pora fraction-subsidy-to-pora - 0.1 ]
             ]
-        ]
-    ]
+
+
+          if [ not-enough-money ] of port-of-rotterdam 0 = true
+            [
+              let building-speed count pipelines / ticks
+              let average-pipe-capacity 0
+              carefully [ set average-pipe-capacity mean [ max-capacity ] of pipelines ]
+                        [ stop ]
+              let years-to-reach-target-2 0
+              carefully [ set years-to-reach-target-2 distance-to-target / ( building-speed * average-pipe-capacity ) ]
+                        [ set years-to-reach-target-2 100 ]
+              if years-left < years-to-reach-target-2
+                [
+                  set yearly-government-subsidy yearly-government-subsidy + 5
+                  if fraction-subsidy-to-pora <= 0.8
+                    [ set fraction-subsidy-to-pora fraction-subsidy-to-pora + 0.2 ]
+                ]
+            ]
+          ]
+      ]
 end
 
 to pay-out-subsidy
@@ -288,20 +292,24 @@ end
 
 to set-storage-price
   if ticks != 0 and predict-storage-price? = true
-  [
-  let average-production mean [ co2-production ] of industries
-  let average-payback-period mean [ payback-period ] of industries
+    [
+      let average-production mean [ co2-production ] of industries
+      let average-payback-period mean [ payback-period ] of industries
 
-  let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
-  let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
-  let average-emission-costs-without-ccs average-production * co2-emission-price
-  let average-storage average-production * capture-efficiency
-  let average-emission-costs-with-ccs (average-production - average-storage) * co2-emission-price
+      let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
+      let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
+      let average-emission-costs-without-ccs average-production * co2-emission-price
+      let average-storage average-production * capture-efficiency
+      let average-emission-costs-with-ccs (average-production - average-storage) * co2-emission-price
 
-  let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
-  let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-  set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
-  ]
+      let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
+      let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
+      set co2-storage-price (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage - 1
+    ]
+
+
+
+
 end
 
 to expectations
@@ -312,7 +320,7 @@ to expectations
       ask industries [
                        carefully [
                                    set co2-emission-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
-                                   set co2-storage-price-expectation item 0 matrix:forecast-compound-growth co2-emission-price-data
+                                   set co2-storage-price-expectation item 0 matrix:forecast-compound-growth co2-storage-price-data
                                  ]
                                  [ print "There is a zero or negative number in the co2-oil-price.csv file. Compound growth forecast can't take the natural log of zero or a negative number" ]
                      ]
@@ -385,7 +393,7 @@ to join-pipe-and-store-emit
         set color green
         set co2-storage min list capture-technology-capacity (co2-production * capture-efficiency)
         set co2-emission co2-production - co2-storage
-        set electricity-consumption (min list capture-technology-capacity co2-production) * capture-electricity-usage
+        set electricity-consumption (min list capture-technology-capacity (co2-production * capture-efficiency)) * capture-electricity-usage
         ask one-of pipelines with [ (extensible = true and used-capacity < max-capacity) or (extensible = false and (used-capacity = 0 or leftover-joined = true )) ]
           [
             ifelse [ co2-storage ] of myself <=  max-capacity - used-capacity
@@ -423,11 +431,11 @@ end
 GRAPHICS-WINDOW
 264
 13
-724
-475
+698
+448
 -1
 -1
-8.8
+8.27
 1
 10
 1
@@ -504,12 +512,12 @@ SLIDER
 10
 99
 252
-133
+132
 yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-35.0
+15.0
 1
 1
 NIL
@@ -519,12 +527,12 @@ SLIDER
 9
 137
 252
-171
+170
 fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-0.10000000000000003
+0.5
 0.1
 1
 NIL
@@ -641,7 +649,7 @@ SLIDER
 9
 174
 252
-208
+207
 capacity-treshold-extensible
 capacity-treshold-extensible
 0
@@ -656,10 +664,10 @@ SWITCH
 9
 235
 251
-269
+268
 industry-expectations
 industry-expectations
-0
+1
 1
 -1000
 
@@ -667,10 +675,10 @@ SWITCH
 9
 273
 251
-307
+306
 consider-2050-emission-targets
 consider-2050-emission-targets
-0
+1
 1
 -1000
 
@@ -678,10 +686,10 @@ SWITCH
 9
 310
 251
-344
+343
 predict-storage-price?
 predict-storage-price?
-0
+1
 1
 -1000
 
