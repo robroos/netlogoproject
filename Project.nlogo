@@ -29,6 +29,8 @@ globals [
           not-enough-money-counter ; this global counts the amount of years that the port of rotterdam has not enough money to build a pipeline (ticks)
           percentage-of-industries-storing ; this global states the percentage of the number of industries that are performing CCS and store CO2 (%)
           percentage-of-CO2-captured ; this global states the percentage of the total CO2 emissions that is captured and stored using CCS (%)
+          yearly-government-subsidy ; this global states the yearly subsidy that the government has available (M€)
+          fraction-subsidy-to-pora ; this global states the fraction of the subsidy that is dispatched to the port of rotterdam (%)
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -80,6 +82,8 @@ to setup
 
   ask patches [set pcolor white]
 
+  set yearly-government-subsidy initial-yearly-government-subsidy
+  set fraction-subsidy-to-pora initial-fraction-subsidy-to-pora
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
   set electricity-price 22 * 10 ^ -8
@@ -434,10 +438,10 @@ to join-pipe-and-store-emit
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-264
-13
-726
-476
+300
+11
+669
+381
 -1
 -1
 8.805
@@ -518,11 +522,11 @@ SLIDER
 99
 252
 132
-yearly-government-subsidy
-yearly-government-subsidy
+initial-yearly-government-subsidy
+initial-yearly-government-subsidy
 0
 50
-0.0
+15.0
 1
 1
 NIL
@@ -533,11 +537,11 @@ SLIDER
 137
 252
 170
-fraction-subsidy-to-pora
-fraction-subsidy-to-pora
+initial-fraction-subsidy-to-pora
+initial-fraction-subsidy-to-pora
 0
 1
-1.0
+0.5
 0.1
 1
 NIL
@@ -702,7 +706,7 @@ SLIDER
 8
 404
 251
-438
+437
 additional-subsidy
 additional-subsidy
 0
@@ -717,7 +721,7 @@ SLIDER
 8
 443
 251
-477
+476
 subsidy-fraction-change
 subsidy-fraction-change
 0
@@ -1157,6 +1161,37 @@ NetLogo 6.0.4
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
+<experiments>
+  <experiment name="experiment" repetitions="1" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>go</go>
+    <metric>count turtles</metric>
+    <enumeratedValueSet variable="industry-expectations">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="additional-subsidy">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="fraction-subsidy-to-pora">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="yearly-government-subsidy">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="capacity-treshold-extensible">
+      <value value="0.7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="predict-storage-price?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="subsidy-fraction-change">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="consider-2050-emission-targets">
+      <value value="true"/>
+    </enumeratedValueSet>
+  </experiment>
+</experiments>
 @#$#@#$#@
 @#$#@#$#@
 default
