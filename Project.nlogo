@@ -125,7 +125,7 @@ to setup
                             set co2-storage 0
                             set co2-emission co2-production
                             set leftover 0
-                            ifelse industry-expectations = true
+                            ifelse industry-expectations? = true
                               [
                                 set co2-emission-price-expectation co2-emission-price
                                 set co2-storage-price-expectation co2-storage-price
@@ -185,7 +185,7 @@ to consider-emission-targets
   ifelse all? industries [ pipe-joined = true ]
     [ set yearly-government-subsidy 0 ]
     [
-      if consider-2050-emission-targets = true and ticks != 0
+      if consider-2050-emission-targets? = true and ticks != 0
         [
           let distance-to-target sum [ co2-emission ] of industries - co2-emission-target
           let years-left 31 - ticks
@@ -240,7 +240,7 @@ to build-pipelines
       if any? storage-points with [ connected = false ]
         [
           let sp one-of storage-points with [ connected = false ]
-          ifelse sum [ min list (co2-production * capture-efficiency) current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-treshold-extensible * [ pipe-capacity ] of sp
+          ifelse sum [ min list (co2-production * capture-efficiency) current-capture-technology-capacity ] of industries with [ CCS-joined = true and pipe-joined = false ] + sum [ leftover ] of industries >= capacity-threshold-extensible * [ pipe-capacity ] of sp
             [
               let pipe-capex [ onshore-distance * onshore-capex * 0.7 + offshore-distance * offshore-capex * 0.7 ] of sp
               ifelse money >= pipe-capex
@@ -319,7 +319,7 @@ to set-storage-price
 end
 
 to expectations
-  if industry-expectations = true
+  if industry-expectations? = true
     [
       set co2-emission-price-data lput co2-emission-price co2-emission-price-data
       set co2-storage-price-data lput co2-storage-price co2-storage-price-data
@@ -338,7 +338,7 @@ to join-CCS
      [
        let co2-emission-price-perceived co2-emission-price
        let co2-storage-price-perceived co2-storage-price
-       if industry-expectations = true
+       if industry-expectations? = true
          [
            set co2-emission-price-perceived co2-emission-price-expectation
            set co2-storage-price-perceived co2-storage-price-expectation
@@ -438,10 +438,10 @@ to join-pipe-and-store-emit
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-300
-11
-669
-381
+268
+10
+637
+380
 -1
 -1
 8.805
@@ -465,10 +465,10 @@ ticks
 30.0
 
 BUTTON
-12
-27
-67
-79
+10
+20
+76
+87
 Setup
 setup
 NIL
@@ -482,10 +482,10 @@ NIL
 1
 
 BUTTON
-74
-27
-130
-79
+84
+21
+150
+86
 Go
 go
 T
@@ -499,10 +499,10 @@ NIL
 1
 
 PLOT
-739
-14
-1109
-227
+646
+10
+941
+224
 Emission and Storage of CO2
 Years
 CO2 (MTon)
@@ -548,10 +548,10 @@ NIL
 HORIZONTAL
 
 PLOT
-741
-231
-1107
-426
+946
+229
+1174
+423
 Costs to industry to store CO2
 Year
 Costs (Million Euros)
@@ -566,11 +566,11 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot total-co2-storage-industry-costs"
 
 PLOT
-1335
-234
-1548
-429
-Subsidy to Infrastructure
+647
+229
+941
+423
+Dispatched subsidy
 NIL
 NIL
 0.0
@@ -578,34 +578,17 @@ NIL
 0.0
 10.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot dispatched-subsidy-infrastructure"
+"to industries" 1.0 0 -14454117 true "" "plot dispatched-subsidy-industry"
+"to infrastructure" 1.0 0 -5298144 true "" "plot dispatched-subsidy-infrastructure"
 
 PLOT
-1110
-233
-1333
+836
 428
-Subsidy to Industries
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot dispatched-subsidy-industry"
-
-PLOT
-1110
-430
-1518
-606
+1039
+583
 Finance of Port of Rotterdam
 Years
 Million Euros
@@ -620,10 +603,10 @@ PENS
 "Money" 1.0 0 -16777216 true "" "plot [money] of port-of-rotterdam 0"
 
 PLOT
-1110
-14
-1334
-229
+947
+10
+1169
+224
 Total amount of electricity used
 Years
 Electricity (MWh)
@@ -638,10 +621,10 @@ PENS
 "Electricity use" 1.0 0 -7500403 true "" "plot electricity-used"
 
 BUTTON
-138
-27
-194
-79
+159
+21
+227
+86
 Go
 go
 NIL
@@ -659,8 +642,8 @@ SLIDER
 174
 252
 207
-capacity-treshold-extensible
-capacity-treshold-extensible
+capacity-threshold-extensible
+capacity-threshold-extensible
 0
 1
 0.7
@@ -674,8 +657,8 @@ SWITCH
 235
 251
 268
-industry-expectations
-industry-expectations
+industry-expectations?
+industry-expectations?
 0
 1
 -1000
@@ -683,10 +666,10 @@ industry-expectations
 SWITCH
 8
 367
-250
+251
 400
-consider-2050-emission-targets
-consider-2050-emission-targets
+consider-2050-emission-targets?
+consider-2050-emission-targets?
 0
 1
 -1000
@@ -711,7 +694,7 @@ additional-subsidy
 additional-subsidy
 0
 50
-5.0
+8.0
 1
 1
 NIL
@@ -726,7 +709,7 @@ subsidy-fraction-change
 subsidy-fraction-change
 0
 1
-0.1
+1.0
 0.1
 1
 NIL
