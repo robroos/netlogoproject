@@ -26,6 +26,9 @@ globals [
           co2-emission-price-data ; this global contains a list of CO2 emission prices over the years, used by the industries to predict next years CO2 emission price (M€/Mton)
           co2-storage-price-data ; this global contains a list of CO2 storage prices over the years, used by the industries to predict next years CO2 storage price (M€/Mton)
           co2-emission-target ; this is the C02-emission target of 2050, which is 0 (Mton)
+          not-enough-money-counter ; this global counts the amount of years that the port of rotterdam has not enough money to build a pipeline (ticks)
+          percentage-of-industries-storing ; this global states the percentage of the number of industries that are performing CCS and store CO2 (%)
+          percentage-of-CO2-captured ; this global states the percentage of the total CO2 emissions that is captured and stored using CCS (%)
         ]
 
 breed [ports-of-rotterdam port-of-rotterdam]
@@ -39,36 +42,36 @@ ports-of-rotterdam-own [
                        ]
 
 industries-own [
-                 payback-period
-                 capture-technology-capacity
-                 electricity-consumption
-                 oil-consumption
-                 co2-production
-                 CCS-joined
-                 pipe-joined
-                 co2-storage
-                 co2-emission
-                 leftover
-                 co2-emission-price-expectation
-                 co2-storage-price-expectation
+                 payback-period ; the period in which the industry needs to pay back the amount of money for the capture technology (years)
+                 capture-technology-capacity ; the capacity of the capture technology (Mton)
+                 electricity-consumption ; (MWh)
+                 oil-consumption ; (Mton)
+                 co2-production ; (Mton)
+                 CCS-joined ; this turtles-own states whether the industry wants to perform CCS or not, based on the financial situation (boolean)
+                 pipe-joined ; this turtles-own states whether the industry is actually storing CO2 through a pipeline to a storage point (boolean)
+                 co2-storage ; the amount of CO2 that the industry is storing (Mton)
+                 co2-emission ; the amount of CO2 emitted to air by the industry (Mton)
+                 leftover ; part of the CO2 emissions that cannot be stored on the first pipeline the industry has joined. This amount will be stored via the next available pipeline (Mton)
+                 co2-emission-price-expectation ; expectations that industry has about next years CO2 emission price based on Compound growth forecast of available data (Mton)
+                 co2-storage-price-expectation ; expectations that industry has about next years CO2 storage price based on Compound growth forecast of available data (Mton)
                ]
 
 storage-points-own [
-                     name
-                     pipe-capacity
-                     connected
-                     onshore-distance
-                     offshore-distance
-                     onshore-capex
-                     offshore-capex
+                     name ; name of the storage point (string)
+                     pipe-capacity ; capacity of the pipe that connects the storage point to the port of rotterdam (Mton/year)
+                     connected ; this turtles-own states whether the pipeline is connected to the port of rotterdam or not (boolean)
+                     onshore-distance ; onshore distance of the pipe that connects the storage point to the port of rotterdam (km)
+                     offshore-distance ; offshore distance of the pipe that connects the storage point to the port of rotterdam (km)
+                     onshore-capex ; onshore CAPEX of the pipe that connects the storage point to the port of rotterdam (M€)
+                     offshore-capex ; offshor CAPEX of the pipe that connects the storage point to the port of rotterdam (M€)
                    ]
 
 pipelines-own [
-                extensible
-                used-capacity
-                max-capacity
-                joined-industries
-                leftover-joined
+                extensible ; this links-own states whether the pipeline is extensible or not (boolean)
+                used-capacity ; amount of capacity that is being used (Mton/year)
+                max-capacity ; capacity of the pipeline (Mton/year)
+                joined-industries ; this links-own is a list containing the ID's of the industries that are storing CO2 via this pipeline (list of strings)
+                leftover-joined ; this links-own states whether a leftover of an industry has been stored to that pipeline this round (boolean)
               ]
 
 to setup
@@ -77,11 +80,9 @@ to setup
 
   ask patches [set pcolor white]
 
-  set yearly-government-subsidy 15
-  set fraction-subsidy-to-pora 0.5
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 75 * 10 ^ -10
+  set electricity-price 22 * 10 ^ -8
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -95,6 +96,7 @@ to setup
   set co2-emission-price-data []
   set co2-storage-price-data []
   set co2-emission-target 0
+  set not-enough-money-counter 0
 
   set-default-shape ports-of-rotterdam "building institution"
   create-ports-of-rotterdam 1
@@ -138,36 +140,39 @@ to setup
 end
 
 to go
-  install-CCS
-  update-prices
-  consider-emission-targets
-  pay-out-subsidy
-  expectations
-  set-storage-price
-  join-CCS
-  build-pipelines
-  allocate-storagepoints
-  join-pipe-and-store-emit
+  install-CCS ;
+  update-prices ;
+  consider-emission-targets ;
+  pay-out-subsidy ;
+  expectations ;
+  set-storage-price ;
+  join-CCS ;
+  build-pipelines ;
+  join-pipe-and-store-emit ;
+  allocate-storagepoints ;
   if ticks = 31 [ stop ]
   tick
 end
 
 to allocate-storagepoints
-  if not any? storage-points with [ connected = false ] and (count storage-points = 0 or all? pipelines with [ extensible = true ] [ used-capacity = max-capacity ] or last-pipeline = "fixed")
+  if any? industries with [ pipe-joined = false ]
     [
-      file-open "storagepoints.csv"
-      if file-at-end? [ stop ]
-      let x csv:from-row file-read-line
-      create-storage-points 1
+      if not any? storage-points with [ connected = false ] and (count storage-points = 0 or all? pipelines with [ extensible = true ] [ used-capacity = max-capacity ] or last-pipeline = "fixed")
         [
-          setxy random-xcor random-ycor
-          set name item 0 x
-          set pipe-capacity item 3 x
-          set onshore-distance item 1 x
-          set offshore-distance item 2 x
-          set onshore-capex item 4 x
-          set offshore-capex item 5 x
-          set connected false
+          file-open "storagepoints.csv"
+          if file-at-end? [ stop ]
+          let x csv:from-row file-read-line
+          create-storage-points 1
+            [
+              setxy random-xcor random-ycor
+              set name item 0 x
+              set pipe-capacity item 3 x
+              set onshore-distance item 1 x
+              set offshore-distance item 2 x
+              set onshore-capex item 4 x
+              set offshore-capex item 5 x
+              set connected false
+            ]
         ]
     ]
 end
@@ -181,35 +186,33 @@ to consider-emission-targets
           let distance-to-target sum [ co2-emission ] of industries - co2-emission-target
           let years-left 31 - ticks
 
-          let joining-rate count industries with [ CCS-joined = true ] / ticks
-          let average-storage 0
-          carefully [ set average-storage mean [ min list current-capture-technology-capacity (co2-production * capture-efficiency) ]  of industries with [ CCS-joined = false ] ]
-                    [ stop ]
-          let years-to-reach-target-1 0
-          carefully [ set years-to-reach-target-1 distance-to-target / ( joining-rate * average-storage ) ]
-                    [ set years-to-reach-target-1 100 ]
-          if years-left < years-to-reach-target-1
-            [
-              set yearly-government-subsidy yearly-government-subsidy + 5
-              if fraction-subsidy-to-pora >= 0.1
-                [ set fraction-subsidy-to-pora fraction-subsidy-to-pora - 0.1 ]
-            ]
-
+          if any? industries with [ CCS-joined = false ]
+          [
+            let joining-rate count industries with [ CCS-joined = true ] / ticks
+            let average-storage mean [ min list current-capture-technology-capacity (co2-production * capture-efficiency) ]  of industries
+            let years-to-reach-target-1 0
+            carefully [ set years-to-reach-target-1 distance-to-target / ( joining-rate * average-storage ) ]
+                      [ set years-to-reach-target-1 100 ]
+            if years-left < years-to-reach-target-1
+              [
+                set yearly-government-subsidy yearly-government-subsidy + additional-subsidy
+                set fraction-subsidy-to-pora max list 0 (fraction-subsidy-to-pora - subsidy-fraction-change)
+              ]
+          ]
 
           if [ not-enough-money ] of port-of-rotterdam 0 = true
             [
               let building-speed count pipelines / ticks
               let average-pipe-capacity 0
               carefully [ set average-pipe-capacity mean [ max-capacity ] of pipelines ]
-                        [ stop ]
+                        [ set average-pipe-capacity 0 ]
               let years-to-reach-target-2 0
               carefully [ set years-to-reach-target-2 distance-to-target / ( building-speed * average-pipe-capacity ) ]
                         [ set years-to-reach-target-2 100 ]
               if years-left < years-to-reach-target-2
                 [
-                  set yearly-government-subsidy yearly-government-subsidy + 5
-                  if fraction-subsidy-to-pora <= 0.8
-                    [ set fraction-subsidy-to-pora fraction-subsidy-to-pora + 0.2 ]
+                  set yearly-government-subsidy yearly-government-subsidy + additional-subsidy
+                  set fraction-subsidy-to-pora min list 1 (fraction-subsidy-to-pora + subsidy-fraction-change)
                 ]
             ]
           ]
@@ -252,6 +255,7 @@ to build-pipelines
                 ]
                 [
                   set not-enough-money true
+                  set not-enough-money-counter not-enough-money-counter + 1
                 ]
             ]
             [
@@ -271,6 +275,7 @@ to build-pipelines
                 ]
                 [
                   set not-enough-money true
+                  set not-enough-money-counter not-enough-money-counter + 1
                 ]
             ]
         ]
@@ -290,10 +295,10 @@ to update-prices
 end
 
 to set-storage-price
-  if ticks != 0 and predict-storage-price? = true
+  if ticks = 0 and predict-storage-price? = true
     [
-      let average-production mean [ co2-production ] of industries with [ CCS-joined = false ]
-      let average-payback-period mean [ payback-period ] of industries with [ CCS-joined = false ]
+      let average-production mean [ co2-production ] of industries
+      let average-payback-period mean [ payback-period ] of industries
 
       let average-CCS-energy-costs electricity-price * capture-electricity-usage * average-production
       let CAPEX-CCS-industries current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
@@ -303,8 +308,9 @@ to set-storage-price
 
       let costs-without-CCS average-payback-period * average-emission-costs-without-ccs
       let emision-investment-costs-with-CCS CAPEX-CCS-industries + average-payback-period * (average-emission-costs-with-ccs + average-CCS-energy-costs)
-
-      set co2-storage-price max list 0.3 (costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage
+      set co2-storage-price min list 0.3 ((costs-without-CCS - emision-investment-costs-with-CCS ) / average-storage)
+      if co2-storage-price < 0
+        [ set co2-storage-price 0.000001 ]
     ]
 end
 
@@ -338,7 +344,8 @@ to join-CCS
 
        let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
        let co2-to-be-emitted co2-production - co2-to-be-captured
-       let energy-costs-with-CCS electricity-price * capture-electricity-usage * min list current-capture-technology-capacity co2-production + oil-price * oil-consumption
+
+       let energy-costs-with-CCS electricity-price * capture-electricity-usage * co2-to-be-captured + oil-price * oil-consumption
 
        let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price-perceived + co2-to-be-emitted * co2-emission-price-perceived
        let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
@@ -422,16 +429,18 @@ to join-pipe-and-store-emit
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
+  set percentage-of-CO2-captured (sum [ used-capacity ] of pipelines / sum [ co2-emission ] of industries) * 100
+  set percentage-of-industries-storing (count industries with [ pipe-joined = true ] / count industries) * 100
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 264
 13
-611
-361
+726
+476
 -1
 -1
-8.27
+8.805
 1
 10
 1
@@ -513,7 +522,7 @@ yearly-government-subsidy
 yearly-government-subsidy
 0
 50
-15.0
+0.0
 1
 1
 NIL
@@ -528,7 +537,7 @@ fraction-subsidy-to-pora
 fraction-subsidy-to-pora
 0
 1
-0.5
+1.0
 0.1
 1
 NIL
@@ -668,10 +677,10 @@ industry-expectations
 -1000
 
 SWITCH
-9
-273
-251
-306
+8
+367
+250
+400
 consider-2050-emission-targets
 consider-2050-emission-targets
 0
@@ -680,14 +689,44 @@ consider-2050-emission-targets
 
 SWITCH
 9
-310
+298
 251
-343
+331
 predict-storage-price?
 predict-storage-price?
 0
 1
 -1000
+
+SLIDER
+8
+404
+251
+438
+additional-subsidy
+additional-subsidy
+0
+50
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+8
+443
+251
+477
+subsidy-fraction-change
+subsidy-fraction-change
+0
+1
+0.1
+0.1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
