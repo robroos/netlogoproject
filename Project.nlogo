@@ -86,7 +86,7 @@ to setup
   set fraction-subsidy-to-pora initial-fraction-subsidy-to-pora
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 22 * 10 ^ -8
+  set electricity-price 22 * 10 ^ -8 ; with this electricity price, the model shows meaningful behaviour
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -99,7 +99,7 @@ to setup
   set current-capture-technology-capacity 5
   set co2-emission-price-data []
   set co2-storage-price-data []
-  set co2-emission-target 0
+  set co2-emission-target 0 ; the CO2 emission target for 2050 is 0
   set not-enough-money-counter 0
 
   set-default-shape ports-of-rotterdam "building institution"
@@ -112,10 +112,9 @@ to setup
   ]
 
   set-default-shape industries "factory"
-  ask n-of 25 patches with [ (pxcor > -1 and pxcor < 5) and (pycor > -7 and pycor < 7) ]
+  ask n-of 25 patches with [ (pxcor > -1 and pxcor < 5) and (pycor > -7 and pycor < 7) ] ; this is just for visualisation, the exact locations of the industries do not influence the model
     [ sprout-industries 1 [
                             set color red
-                            set size 1
                             set payback-period random 20 + 1
                             set oil-consumption random 10 + 1
                             set co2-production oil-consumption * ton-co2-emission-per-ton-oil
@@ -138,22 +137,22 @@ to setup
     ]
 
   set-default-shape storage-points "container"
-  allocate-storagepoints
-
+  allocate-storagepoints ; the first storage point is allocated at tick 0
   reset-ticks
 end
 
 to go
-  install-CCS ;
-  update-prices ;
-  consider-emission-targets ;
-  pay-out-subsidy ;
-  expectations ;
-  set-storage-price ;
-  join-CCS ;
-  build-pipelines ;
-  join-pipe-and-store-emit ;
-  allocate-storagepoints ;
+  install-CCS ; if an industrie has declared to join CCS in the previous tick, they install the capture technology and pay the connection price to the PoRA
+  update-prices ; this function updates: capture technology capacity and price, electricity price, CO2 emissions price, oil price
+  consider-emission-targets ; the government considers distance to 2050 emissions targets based on joining rate and building speed and changes total amount of subsidy and the fraction dispatched to PoRA
+  pay-out-subsidy ; government dispatches subsidy to PoRA and industries
+  expectations ; industries have expectations about next years CO2 storage price and CO2 emission price
+  set-storage-price ; the PoRA predicts and sets the storage price at the start to increase industry participation
+  join-CCS ; industries can decide to join CCS on basis of the financial efficiency of implementing CCS
+  build-pipelines ; the PoRA can build fixed or extensible pipelines based on the number of industries interested in joining and the "capacity-threshold-extensible"
+  join-pipe-and-store-emit ; if industries have installed the capture technology they can join a pipeline and start storing CO2
+  allocate-storagepoints ; government allocates next storage point location if the connecting pipe
+  update-KPIs ;
   if ticks = 31 [ stop ]
   tick
 end
@@ -229,7 +228,7 @@ to pay-out-subsidy
       set money money + yearly-government-subsidy * fraction-subsidy-to-pora
       set dispatched-subsidy-infrastructure dispatched-subsidy-infrastructure + yearly-government-subsidy * fraction-subsidy-to-pora
     ]
-  ifelse count industries with [CCS-joined = true] = count industries
+  ifelse all? industries [CCS-joined = true]
     [ set subsidy-per-industry-without-ccs 0 ]
     [ set subsidy-per-industry-without-ccs yearly-government-subsidy * (1 - fraction-subsidy-to-pora) / count industries ]
 end
@@ -429,11 +428,14 @@ to join-pipe-and-store-emit
    ]
   ask pipelines with [ extensible = true ] [ if used-capacity = max-capacity [ set color red ] ]
   ask port-of-rotterdam 0 [ set money money + sum [ used-capacity ] of pipelines * co2-storage-price ]
+end
+
+to update-KPIs
   set total-co2-stored total-co2-stored + sum [ used-capacity ] of pipelines
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
-  set percentage-of-CO2-captured (sum [ used-capacity ] of pipelines / sum [ co2-emission ] of industries) * 100
+  set percentage-of-CO2-captured (sum [ used-capacity ] of pipelines / sum [ co2-production ] of industries) * 100
   set percentage-of-industries-storing (count industries with [ pipe-joined = true ] / count industries) * 100
 end
 @#$#@#$#@
@@ -525,8 +527,8 @@ SLIDER
 initial-yearly-government-subsidy
 initial-yearly-government-subsidy
 0
-50
-15.0
+150
+130.0
 1
 1
 NIL
@@ -646,16 +648,16 @@ capacity-threshold-extensible
 capacity-threshold-extensible
 0
 1
-0.7
+0.2
 0.1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-9
+10
 235
-251
+252
 268
 industry-expectations?
 industry-expectations?
@@ -675,10 +677,10 @@ consider-2050-emission-targets?
 -1000
 
 SWITCH
-9
-298
-251
-331
+10
+297
+252
+330
 predict-storage-price?
 predict-storage-price?
 0
@@ -694,7 +696,7 @@ additional-subsidy
 additional-subsidy
 0
 50
-8.0
+13.0
 1
 1
 NIL
@@ -709,7 +711,7 @@ subsidy-fraction-change
 subsidy-fraction-change
 0
 1
-1.0
+0.2
 0.1
 1
 NIL
