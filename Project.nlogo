@@ -12,8 +12,9 @@ globals [
           current-capture-technology-price ; this price decreases over the years (M€)
           current-capture-technology-capacity ; this capacity increases changes over the years (M€)
           capture-efficiency ; this is the efficiency of the capture technology, set by the environment (%)
-          total-co2-emitted ; total CO2 emitted by the industries (Mton)
-          total-co2-stored ; total CO2 stored by the industries (Mton)
+          total-co2-emitted ; total CO2 emitted by the industries (Mton cummulative)
+          total-co2-stored ; total CO2 stored by the industries (Mton cummulative)
+          total-co2-produced ; total CO2 produced by the industries (Mton cummulative)
           total-co2-storage-industry-costs ; total costs of the industry to store CO2 (M€)
           subsidy-per-industry-without-ccs ; amount of governmental subsidy available per industry (M€)
           dispatched-subsidy-infrastructure ; total amount of governmental subsidy spent by the port of rotterdam to build pipelines (M€)
@@ -82,11 +83,11 @@ to setup
 
   ask patches [set pcolor white]
 
+  set electricity-price 22 * 10 ^ -8
   set yearly-government-subsidy initial-yearly-government-subsidy
   set fraction-subsidy-to-pora initial-fraction-subsidy-to-pora
   set ton-co2-emission-per-ton-oil 3.2
   set connection-price 1
-  set electricity-price 22 * 10 ^ -8 ; with this electricity price, the model shows meaningful behaviour
   file-open "co2-oil-price.csv"
   let x csv:from-row file-read-line
   set co2-emission-price item 1 x
@@ -151,8 +152,8 @@ to go
   join-CCS ; industries can decide to join CCS on basis of the financial efficiency of implementing CCS
   build-pipelines ; the PoRA can build fixed or extensible pipelines based on the number of industries interested in joining and the "capacity-threshold-extensible"
   join-pipe-and-store-emit ; if industries have installed the capture technology they can join a pipeline and start storing CO2
-  allocate-storagepoints ; government allocates next storage point location if the connecting pipe
-  update-KPIs ;
+  allocate-storagepoints ; government allocates next storage point location if all extensible pipelines are using their max capacity and the rest of pipelines is fixed
+  update-KPIs ; this function updates some important (cummulative) KPI's
   if ticks = 31 [ stop ]
   tick
 end
@@ -167,7 +168,7 @@ to allocate-storagepoints
           let x csv:from-row file-read-line
           create-storage-points 1
             [
-              setxy random-xcor random-ycor
+              setxy random-xcor random-ycor ; the location is random and not matched with the actual distance of the potetial connected pipeline
               set name item 0 x
               set pipe-capacity item 3 x
               set onshore-distance item 1 x
@@ -286,15 +287,15 @@ to build-pipelines
 end
 
 to update-prices
-      set current-capture-technology-price current-capture-technology-price * 0.9
-      set current-capture-technology-capacity current-capture-technology-capacity * 1.1
-      set electricity-price electricity-price * 0.95
+  set current-capture-technology-price current-capture-technology-price * 0.9
+  set current-capture-technology-capacity current-capture-technology-capacity * 1.1
+  set electricity-price electricity-price * 0.95
 
-      file-open "co2-oil-price.csv"
-      if file-at-end? [ stop ]
-      let x csv:from-row file-read-line
-      set co2-emission-price item 1 x
-      set oil-price item 2 x
+  file-open "co2-oil-price.csv"
+  if file-at-end? [ stop ]
+  let x csv:from-row file-read-line
+  set co2-emission-price item 1 x
+  set oil-price item 2 x
 end
 
 to set-storage-price
@@ -334,34 +335,37 @@ end
 
 to join-CCS
    ask industries with [ CCS-joined = false ]
-     [
-       let co2-emission-price-perceived co2-emission-price
-       let co2-storage-price-perceived co2-storage-price
-       if industry-expectations? = true
-         [
-           set co2-emission-price-perceived co2-emission-price-expectation
-           set co2-storage-price-perceived co2-storage-price-expectation
-         ]
+ 	[
+   	let co2-emission-price-perceived co2-emission-price
+   	let co2-storage-price-perceived co2-storage-price
+   	if industry-expectations? = true ; if this option is turned on, they perceive their own expectation, otherwise they consider the real price
+     	[
+       	set co2-emission-price-perceived co2-emission-price-expectation
+       	set co2-storage-price-perceived co2-storage-price-expectation
+     	]
 
-       let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price-perceived
+   	let OPEX-without-CCS oil-price * oil-consumption + co2-production * co2-emission-price-perceived
 
-       let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
-       let co2-to-be-emitted co2-production - co2-to-be-captured
+  	; CO2 to be captured is limited to the capture-capacity and the co2 that can be captured, considering the efficiency and actual production of CO2
+   	let co2-to-be-captured min list current-capture-technology-capacity (co2-production * capture-efficiency)
+   	let co2-to-be-emitted co2-production - co2-to-be-captured
+  	
+   	; energy costs are increased due to electrification, which is dependent on the electricity use per captured mega ton co2
+   	let energy-costs-with-CCS electricity-price * capture-electricity-usage * co2-to-be-captured + oil-price * oil-consumption
 
-       let energy-costs-with-CCS electricity-price * capture-electricity-usage * co2-to-be-captured + oil-price * oil-consumption
+   	let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price-perceived + co2-to-be-emitted * co2-emission-price-perceived
+   	let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
 
-       let OPEX-with-CCS energy-costs-with-CCS + co2-to-be-captured * co2-storage-price-perceived + co2-to-be-emitted * co2-emission-price-perceived
-       let CAPEX-CCS-with-subsidy current-capture-technology-price - subsidy-per-industry-without-ccs + connection-price
-
-       if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period
-        [
-          set CCS-joined true
-          set color orange
-          set total-co2-storage-industry-costs total-co2-storage-industry-costs + current-capture-technology-price - subsidy-per-industry-without-ccs ;update industry co2 costs with CAPEX
-          set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs
-        ]
-     ]
+   	if CAPEX-CCS-with-subsidy + payback-period * OPEX-with-CCS < OPEX-without-CCS * payback-period; If the costs with CCS are lower than they would be without CCS, the industry joins CCS
+    	[
+      	set CCS-joined true
+      	set color orange
+      	set total-co2-storage-industry-costs total-co2-storage-industry-costs + current-capture-technology-price - subsidy-per-industry-without-ccs ; update industry co2 costs with CAPEX, minus subsidy
+      	set dispatched-subsidy-industry dispatched-subsidy-industry + subsidy-per-industry-without-ccs; update dispatched subsidy
+    	]
+ 	]
 end
+
 
 to install-CCS
   ask industries [
@@ -412,7 +416,7 @@ to join-pipe-and-store-emit
                 let rest max-capacity - used-capacity
                 ask myself [
                              set leftover co2-storage - rest
-                             set co2-emission leftover
+                             set co2-emission co2-emission + leftover
                              set co2-storage co2-storage - leftover
                            ]
                 set used-capacity max-capacity
@@ -433,10 +437,13 @@ end
 to update-KPIs
   set total-co2-stored total-co2-stored + sum [ used-capacity ] of pipelines
   set total-co2-emitted total-co2-emitted + sum [ co2-emission ] of industries
+  set total-co2-produced total-co2-produced + sum [ co2-production ] of industries
+
   set total-co2-storage-industry-costs total-co2-storage-industry-costs + co2-storage-price * sum [ used-capacity ] of pipelines
+
   set electricity-used electricity-used + sum [ electricity-consumption ] of industries
-  set percentage-of-CO2-captured (sum [ used-capacity ] of pipelines / sum [ co2-production ] of industries) * 100
-  set percentage-of-industries-storing (count industries with [ pipe-joined = true ] / count industries) * 100
+
+  set percentage-of-CO2-captured (total-co2-stored / total-co2-produced) * 100
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
