@@ -110,6 +110,7 @@ to setup
     set size 2
     setxy -2 0
     set money 10
+    set not-enough-money false
   ]
 
   set-default-shape industries "factory"
